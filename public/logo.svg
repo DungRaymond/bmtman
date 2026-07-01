@@ -1,0 +1,46 @@
+<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="stringArea">
+      <ellipse cx="112" cy="92" rx="46" ry="56" />
+    </clipPath>
+  </defs>
+
+  <rect x="0" y="0" width="240" height="240" rx="52" fill="#14332A" />
+
+  <g transform="rotate(-18 120 120)">
+    <rect x="100" y="150" width="26" height="88" rx="10" fill="#EFEBDD" />
+    <g stroke="#14332A" stroke-width="3" opacity="0.5">
+      <line x1="100" y1="168" x2="126" y2="168" />
+      <line x1="100" y1="182" x2="126" y2="182" />
+      <line x1="100" y1="196" x2="126" y2="196" />
+      <line x1="100" y1="210" x2="126" y2="210" />
+      <line x1="100" y1="224" x2="126" y2="224" />
+    </g>
+
+    <path d="M104 152 L98 128 L126 128 L120 152 Z" fill="#EFEBDD" />
+    <ellipse cx="112" cy="92" rx="46" ry="56" fill="none" stroke="#EFEBDD" stroke-width="10" />
+
+    <g clip-path="url(#stringArea)" stroke="#EFEBDD" stroke-width="1.6" opacity="0.5">
+      <line x1="78" y1="30" x2="78" y2="154" />
+      <line x1="90" y1="30" x2="90" y2="154" />
+      <line x1="102" y1="30" x2="102" y2="154" />
+      <line x1="112" y1="30" x2="112" y2="154" />
+      <line x1="122" y1="30" x2="122" y2="154" />
+      <line x1="134" y1="30" x2="134" y2="154" />
+      <line x1="146" y1="30" x2="146" y2="154" />
+
+      <line x1="60" y1="46" x2="164" y2="46" />
+      <line x1="60" y1="62" x2="164" y2="62" />
+      <line x1="60" y1="78" x2="164" y2="78" />
+      <line x1="60" y1="94" x2="164" y2="94" />
+      <line x1="60" y1="110" x2="164" y2="110" />
+      <line x1="60" y1="126" x2="164" y2="126" />
+      <line x1="60" y1="142" x2="164" y2="142" />
+    </g>
+  </g>
+
+  <g>
+    <path d="M181 58 C170 40 168 22 179 8 C184 20 184 20 189 8 C200 22 198 40 187 58 Z" fill="#E8B93D" />
+    <circle cx="184" cy="58" r="9" fill="#E8B93D" />
+  </g>
+</svg>
