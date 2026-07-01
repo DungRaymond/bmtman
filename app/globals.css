@@ -437,6 +437,152 @@ code {
   margin-left: 4px;
 }
 
+.score-hero {
+  background: #163327;
+  border: 1px solid rgba(74, 222, 128, 0.22);
+  border-radius: 8px;
+  padding: 18px;
+  margin: 4px 0 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+}
+
+.score-hero span {
+  color: #86efac;
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.score-hero h1 {
+  color: #f8fafc;
+  font-size: 36px;
+}
+
+.score-hero p {
+  color: #a7f3d0;
+  margin-top: 6px;
+}
+
+.score-date-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto;
+  gap: 8px;
+  min-width: min(100%, 320px);
+}
+
+.score-start-card,
+.score-section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.score-section-head {
+  margin-bottom: 14px;
+}
+
+.score-section-head strong {
+  color: #4ade80;
+  font-size: 22px;
+  white-space: nowrap;
+}
+
+.score-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+}
+
+.score-member-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.score-member-card {
+  background: #0f172a;
+  border: 1px solid #273449;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.score-member-card.active {
+  border-color: rgba(74, 222, 128, 0.42);
+  background: #10251f;
+}
+
+.score-member-card strong,
+.score-history-row strong {
+  color: #f8fafc;
+}
+
+.score-member-card span,
+.score-history-row span,
+.score-mini-total span {
+  color: #94a3b8;
+  display: block;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.score-member-card input {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.score-walkin-form {
+  display: grid;
+  gap: 12px;
+}
+
+.score-mini-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #334155;
+}
+
+.score-mini-total strong {
+  color: #f8fafc;
+}
+
+.score-history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.score-history-list.compact {
+  margin-top: 12px;
+}
+
+.score-history-row {
+  background: #0f172a;
+  border: 1px solid #273449;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.score-history-row b {
+  color: #4ade80;
+  white-space: nowrap;
+}
+
 .row {
   display: flex;
   gap: 8px;
@@ -647,7 +793,10 @@ button {
 
 @media (max-width: 780px) {
   .app-shell-header,
-  .page-title {
+  .page-title,
+  .score-hero,
+  .score-start-card,
+  .score-section-head {
     align-items: stretch;
     flex-direction: column;
   }
@@ -664,6 +813,7 @@ button {
   .summary-grid,
   .debt-card-grid,
   .member-debt-layout,
+  .score-layout,
   .rate-card-grid,
   .grid2,
   .grid3,
@@ -679,6 +829,10 @@ button {
 
   .inline-form {
     align-items: stretch;
+  }
+
+  .score-date-form {
+    grid-template-columns: 1fr;
   }
 
   .collection-card-grid {

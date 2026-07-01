@@ -1,13 +1,9 @@
 import {
   addMemberToSessionAction,
-  addWalkinAction,
   addWalkinDoFeeAction,
   createSessionAction,
-  setSessionCancelledAction,
-  toggleWalkinPaidAction,
   updateSessionDoAction,
 } from "@/app/actions";
-import { AdminPinField } from "@/app/components/AdminPinField";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import {
   formatDateVN,
@@ -34,223 +30,184 @@ export default async function Home({ searchParams }: PageProps) {
     ? await getSessionParticipants(session.session_id, date)
     : [];
   const walkins = session ? await getSessionWalkins(session.session_id) : [];
-  const usedMemberIds = new Set(participants.map((p) => p.member_id));
-  const availableMembers = activeMembers.filter(
-    (row) => !usedMemberIds.has(row.member_id)
+  const doWalkins = walkins.filter((walkin) => walkin.fee_type === "do_fee");
+  const participantByMemberId = new Map(
+    participants.map((participant) => [participant.member_id, participant])
   );
-  const maxWalkinNumber = Math.max(
-    7,
-    ...walkins.map((walkin) => walkin.walkin_number)
+  const totalMemberDo = participants.reduce(
+    (sum, participant) => sum + participant.do_points,
+    0
+  );
+  const totalWalkinDo = doWalkins.reduce(
+    (sum, walkin) => sum + walkin.amount_expected,
+    0
   );
 
   return (
     <main>
       <ConfigWarning />
 
-      <section className="page-title">
+      <section className="score-hero">
         <div>
-          <h1>Ghi độ</h1>
-          <p>Log buổi đánh, thành viên, vãng lai và các khoản phải thu tự động.</p>
+          <span>Ghi độ</span>
+          <h1>{formatDateVN(date)}</h1>
+          <p>{participants.length} thành viên đã ghi độ</p>
         </div>
-        <form className="inline-form" action="/" method="get">
+        <form className="score-date-form" action="/" method="get">
           <input type="date" name="date" defaultValue={date} />
           <button className="btn-secondary" type="submit">
-            Chọn ngày
+            Xem ngày
           </button>
         </form>
       </section>
 
-      {!session ? (
-        <section className="card">
-          <div className="section-title">Buổi {formatDateVN(date)}</div>
-          <p className="muted">Chưa có buổi đánh cho ngày này.</p>
-          <form className="stack-form" action={createSessionAction}>
+      {!session && (
+        <section className="card score-start-card">
+          <div>
+            <div className="section-title">Bắt đầu ghi độ hôm nay</div>
+            <p className="muted">Tạo buổi đánh cho ngày đã chọn rồi nhập độ bên dưới.</p>
+          </div>
+          <form action={createSessionAction}>
             <input type="hidden" name="date" value={date} />
             <button className="btn-primary" type="submit">
               Tạo buổi đánh
             </button>
           </form>
         </section>
-      ) : (
-        <>
-          <section className="card">
-            <div className="section-title">Buổi {formatDateVN(date)}</div>
-            <form className="grid2" action={setSessionCancelledAction}>
-              <input type="hidden" name="date" value={date} />
-              <input type="hidden" name="session_id" value={session.session_id} />
-              <div>
-                <label>Trạng thái</label>
-                <select
-                  name="is_cancelled"
-                  defaultValue={String(session.is_cancelled)}
-                >
-                  <option value="0">Có đánh</option>
-                  <option value="1">Sân nghỉ</option>
-                </select>
-              </div>
-              <div>
-                <label>Ghi chú buổi</label>
-                <input name="note" defaultValue={session.note || ""} />
-              </div>
-              <AdminPinField />
-              <button className="btn-secondary" type="submit">
-                Lưu trạng thái
-              </button>
-            </form>
-          </section>
+      )}
 
-          <section className="card">
-            <div className="section-title">Thành viên có định danh</div>
-            <form className="grid3" action={addMemberToSessionAction}>
-              <input type="hidden" name="date" value={date} />
-              <div>
-                <label>Thêm thành viên</label>
-                <select name="member_id" required>
-                  <option value="">Chọn người</option>
-                  {availableMembers.map((row) => (
-                    <option key={row.member_id} value={row.member_id}>
-                      {row.member.name} (
-                      {row.status === "fixed" ? "cố định" : "cố định cũ"})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label>Độ / tiền độ</label>
-                <input name="do_points" type="number" min="0" defaultValue="0" />
-              </div>
-              <button className="btn-primary" type="submit">
-                Thêm vào buổi
-              </button>
-            </form>
+      <section className="score-layout">
+        <div className="card">
+          <div className="score-section-head">
+            <div>
+              <div className="section-title">Ghi độ thành viên</div>
+              <p className="muted">Nhập số độ của từng người trong ngày đang chọn.</p>
+            </div>
+            <strong>{money(totalMemberDo)}</strong>
+          </div>
 
-            <div className="table-list">
-              {participants.length === 0 && (
-                <div className="empty">Chưa có thành viên nào trong buổi.</div>
-              )}
-              {participants.map((participant) => (
+          <div className="score-member-grid">
+            {activeMembers.map((row) => {
+              const participant = participantByMemberId.get(row.member_id);
+              return (
                 <form
-                  className="data-row"
-                  key={participant.id}
-                  action={updateSessionDoAction}
+                  className={participant ? "score-member-card active" : "score-member-card"}
+                  key={row.member_id}
+                  action={participant ? updateSessionDoAction : addMemberToSessionAction}
                 >
                   <input type="hidden" name="date" value={date} />
-                  <input type="hidden" name="id" value={participant.id} />
-                  <input
-                    type="hidden"
-                    name="session_id"
-                    value={participant.session_id}
-                  />
-                  <input
-                    type="hidden"
-                    name="member_id"
-                    value={participant.member_id}
-                  />
+                  <input type="hidden" name="member_id" value={row.member_id} />
+                  {participant && (
+                    <>
+                      <input type="hidden" name="id" value={participant.id} />
+                      <input
+                        type="hidden"
+                        name="session_id"
+                        value={participant.session_id}
+                      />
+                    </>
+                  )}
                   <div>
-                    <strong>{participant.members?.name || "Không rõ"}</strong>
-                    <div className="muted">
-                      {participant.status === "former_fixed"
-                        ? "Cố định cũ: tạo phí giao lưu trong ngày"
-                        : "Cố định: gom phí cuối tháng"}
-                    </div>
+                    <strong>{row.member.name}</strong>
+                    <span>{row.status === "fixed" ? "Cố định" : "Cố định cũ"}</span>
                   </div>
-                  <div>
-                    <label>Độ</label>
+                  <label>
+                    Độ
                     <input
                       name="do_points"
                       type="number"
                       min="0"
-                      defaultValue={participant.do_points}
+                      defaultValue={participant?.do_points ?? 0}
                     />
-                  </div>
-                  <button className="btn-secondary small-btn" type="submit">
-                    Cập nhật
+                  </label>
+                  <button
+                    className={participant ? "btn-secondary small-btn" : "btn-primary small-btn"}
+                    type="submit"
+                  >
+                    {participant ? "Cập nhật" : "Ghi độ"}
                   </button>
                 </form>
-              ))}
+              );
+            })}
+          </div>
+        </div>
+
+        <aside className="card">
+          <div className="section-title">Vãng lai có độ</div>
+          <form className="score-walkin-form" action={addWalkinDoFeeAction}>
+            <input type="hidden" name="date" value={date} />
+            <div>
+              <label>Vãng lai số</label>
+              <input name="walkin_number" type="number" min="1" required />
             </div>
-          </section>
-
-          <section className="card">
-            <div className="section-title">Vãng lai</div>
-            <div className="walkin-grid">
-              {Array.from({ length: maxWalkinNumber }, (_, index) => index + 1).map(
-                (number) => {
-                  const sessionFee = walkins.find(
-                    (walkin) =>
-                      walkin.walkin_number === number &&
-                      walkin.fee_type === "session_fee"
-                  );
-                  return (
-                    <form
-                      key={number}
-                      action={sessionFee ? toggleWalkinPaidAction : addWalkinAction}
-                    >
-                      <input type="hidden" name="date" value={date} />
-                      {sessionFee ? (
-                        <>
-                          <input type="hidden" name="id" value={sessionFee.id} />
-                          <AdminPinField />
-                        </>
-                      ) : (
-                        <input
-                          type="hidden"
-                          name="walkin_number"
-                          value={number}
-                        />
-                      )}
-                      <button
-                        className={
-                          "walkin-button " +
-                          (sessionFee?.is_paid ? "paid" : sessionFee ? "unpaid" : "")
-                        }
-                        type="submit"
-                      >
-                        <span>Vãng lai {number}</span>
-                        <small>
-                          {sessionFee
-                            ? sessionFee.is_paid
-                              ? `Đã thu ${money(sessionFee.amount_collected)}`
-                              : `Chưa thu ${money(sessionFee.amount_expected)}`
-                            : "Thêm"}
-                        </small>
-                      </button>
-                    </form>
-                  );
-                }
-              )}
+            <div>
+              <label>Tiền độ</label>
+              <input name="amount" type="number" min="1" required />
             </div>
+            <button className="btn-primary" type="submit">
+              Ghi độ vãng lai
+            </button>
+          </form>
 
-            <form className="grid3 compact-form" action={addWalkinDoFeeAction}>
-              <input type="hidden" name="date" value={date} />
-              <div>
-                <label>Vãng lai số</label>
-                <input name="walkin_number" type="number" min="1" required />
-              </div>
-              <div>
-                <label>Tiền độ</label>
-                <input name="amount" type="number" min="1" required />
-              </div>
-              <button className="btn-secondary" type="submit">
-                Thêm độ vãng lai
-              </button>
-            </form>
+          <div className="score-mini-total">
+            <span>Tổng độ vãng lai</span>
+            <strong>{money(totalWalkinDo)}</strong>
+          </div>
 
-            {walkins.some((walkin) => walkin.fee_type === "do_fee") && (
-              <div className="table-list">
-                {walkins
-                  .filter((walkin) => walkin.fee_type === "do_fee")
-                  .map((walkin) => (
-                    <div className="data-row" key={walkin.id}>
-                      <div>Vãng lai {walkin.walkin_number}</div>
-                      <strong>{money(walkin.amount_expected)}</strong>
-                    </div>
-                  ))}
-              </div>
+          <div className="score-history-list compact">
+            {doWalkins.length === 0 && (
+              <div className="empty">Chưa có độ vãng lai trong ngày này.</div>
             )}
-          </section>
-        </>
-      )}
+            {doWalkins.map((walkin) => (
+              <div className="score-history-row" key={walkin.id}>
+                <div>
+                  <strong>Vãng lai {walkin.walkin_number}</strong>
+                  <span>Tiền độ</span>
+                </div>
+                <b>{money(walkin.amount_expected)}</b>
+              </div>
+            ))}
+          </div>
+        </aside>
+      </section>
+
+      <section className="card">
+        <div className="score-section-head">
+          <div>
+            <div className="section-title">Lịch sử độ ngày {formatDateVN(date)}</div>
+            <p className="muted">Danh sách các khoản độ đã được ghi cho ngày đang chọn.</p>
+          </div>
+          <strong>{money(totalMemberDo + totalWalkinDo)}</strong>
+        </div>
+
+        <div className="score-history-list">
+          {participants.length === 0 && doWalkins.length === 0 && (
+            <div className="empty">Chưa có lịch sử độ cho ngày này.</div>
+          )}
+          {participants.map((participant) => (
+            <div className="score-history-row" key={participant.id}>
+              <div>
+                <strong>{participant.members?.name || "Không rõ"}</strong>
+                <span>
+                  {participant.status === "former_fixed"
+                    ? "Cố định cũ"
+                    : "Cố định"}
+                </span>
+              </div>
+              <b>{money(participant.do_points)}</b>
+            </div>
+          ))}
+          {doWalkins.map((walkin) => (
+            <div className="score-history-row" key={`walkin-${walkin.id}`}>
+              <div>
+                <strong>Vãng lai {walkin.walkin_number}</strong>
+                <span>Tiền độ vãng lai</span>
+              </div>
+              <b>{money(walkin.amount_expected)}</b>
+            </div>
+          ))}
+        </div>
+      </section>
     </main>
   );
 }
