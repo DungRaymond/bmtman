@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ghi điểm cầu lông (2v2)
 
-## Getting Started
+Web ghi điểm cầu lông cho team, mỗi set là 2 đấu 2, dữ liệu lưu trên Supabase, deploy bằng Vercel.
 
-First, run the development server:
+## 1. Tạo bảng trên Supabase
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Vào Supabase project → SQL Editor → chạy:
+
+```sql
+create table badminton_matches (
+  id uuid primary key default gen_random_uuid(),
+  match_date date not null,
+  team_a_player1 text not null,
+  team_a_player2 text not null,
+  team_b_player1 text not null,
+  team_b_player2 text not null,
+  score_a int not null,
+  score_b int not null,
+  note text,
+  created_at timestamptz default now()
+);
+
+alter table badminton_matches enable row level security;
+
+create policy "public read" on badminton_matches
+  for select using (true);
+
+create policy "public insert" on badminton_matches
+  for insert with check (true);
+
+create policy "public delete" on badminton_matches
+  for delete using (true);
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> Policy trên cho phép đọc, ghi và xoá công khai. Cách này chỉ phù hợp khi app dùng nội bộ và bạn chấp nhận rủi ro ai có đường dẫn cũng có thể sửa dữ liệu. Nếu cần an toàn hơn, hãy thêm Supabase Auth và giới hạn policy theo người dùng đã đăng nhập.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Lấy `Project URL` và `anon public key` trong Supabase → Project Settings → API.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 2. Chạy local
 
-## Learn More
+```bash
+npm install
+cp .env.local.example .env.local
+# rồi điền NEXT_PUBLIC_SUPABASE_URL và NEXT_PUBLIC_SUPABASE_ANON_KEY vào .env.local
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Mở http://localhost:3000
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 3. Deploy lên Vercel
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Đẩy code này lên một GitHub repo.
+2. Vào https://vercel.com → New Project → Import repo vừa tạo.
+3. Ở bước cấu hình, vào **Environment Variables** thêm:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+4. Bấm Deploy.
 
-## Deploy on Vercel
+Hoặc dùng Vercel CLI:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm i -g vercel
+vercel
+vercel env add NEXT_PUBLIC_SUPABASE_URL
+vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY
+vercel --prod
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Cấu trúc dự án
+
+```txt
+app/
+  layout.tsx        # Root layout
+  page.tsx          # Trang chính: chọn ngày, ghi điểm, lịch sử
+  globals.css       # Style toàn cục
+lib/
+  supabaseClient.ts # Khởi tạo Supabase client từ env var
+```
