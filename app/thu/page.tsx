@@ -1,30 +1,48 @@
 import {
   createManualChargeAction,
+  createWalkinReceivableAction,
   recordPaymentAction,
+  recordWalkinPaymentAction,
 } from "@/app/actions";
 import { AdminPinField } from "@/app/components/AdminPinField";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import {
   chargeTypeLabels,
   currentMonthValue,
+  formatDateVN,
   getCharges,
   getMemberBalances,
   getMembers,
+  getWalkinReceivables,
   money,
   outstandingAmount,
   paidAmount,
   todayInputValue,
+  walkinOutstandingAmount,
+  walkinSessionDate,
 } from "@/lib/finance";
 
 export const dynamic = "force-dynamic";
 
+const walkinTypeLabels: Record<string, string> = {
+  session_fee: "Vãng lai theo buổi",
+  do_fee: "Tiền độ vãng lai",
+};
+
 export default async function ThuPage() {
-  const [charges, balances, members] = await Promise.all([
+  const [charges, balances, members, walkins] = await Promise.all([
     getCharges(),
     getMemberBalances(),
     getMembers(),
+    getWalkinReceivables(),
   ]);
   const unpaidCharges = charges.filter((charge) => outstandingAmount(charge) > 0);
+  const unpaidWalkins = walkins.filter((walkin) => walkinOutstandingAmount(walkin) > 0);
+  const totalMemberDebt = balances.reduce((sum, row) => sum + row.outstanding_debt, 0);
+  const totalWalkinDebt = unpaidWalkins.reduce(
+    (sum, walkin) => sum + walkinOutstandingAmount(walkin),
+    0
+  );
 
   return (
     <main>
@@ -39,23 +57,45 @@ export default async function ThuPage() {
 
       <section className="summary-grid">
         <div className="metric">
-          <span>Nợ còn lại</span>
-          <strong>
-            {money(
-              balances.reduce((sum, row) => sum + row.outstanding_debt, 0)
-            )}
-          </strong>
+          <span>Nợ thành viên</span>
+          <strong>{money(totalMemberDebt)}</strong>
         </div>
         <div className="metric">
-          <span>Khoản chưa thu</span>
+          <span>Khoản thành viên chưa thu</span>
           <strong>{unpaidCharges.length}</strong>
         </div>
         <div className="metric">
-          <span>Thành viên có nợ</span>
-          <strong>
-            {balances.filter((row) => row.outstanding_debt > 0).length}
-          </strong>
+          <span>Vãng lai chưa thu</span>
+          <strong>{money(totalWalkinDebt)}</strong>
         </div>
+      </section>
+
+      <section className="card">
+        <div className="section-title">Tạo khoản thu vãng lai theo buổi</div>
+        <form className="grid3" action={createWalkinReceivableAction}>
+          <div>
+            <label>Ngày buổi chơi</label>
+            <input name="date" type="date" defaultValue={todayInputValue()} required />
+          </div>
+          <div>
+            <label>Số thứ tự vãng lai</label>
+            <input
+              name="walkin_number"
+              type="number"
+              min="1"
+              defaultValue={unpaidWalkins.length + 1}
+              required
+            />
+          </div>
+          <div>
+            <label>Mức thu</label>
+            <input value="80.000đ / buổi" readOnly />
+          </div>
+          <AdminPinField />
+          <button className="btn-primary" type="submit">
+            Tạo khoản vãng lai
+          </button>
+        </form>
       </section>
 
       <section className="card">
@@ -106,10 +146,53 @@ export default async function ThuPage() {
       </section>
 
       <section className="card">
-        <div className="section-title">Khoản chưa thu</div>
+        <div className="section-title">Vãng lai chưa thu</div>
+        <div className="table-list">
+          {unpaidWalkins.length === 0 && (
+            <div className="empty">Không còn khoản vãng lai chưa thu.</div>
+          )}
+          {unpaidWalkins.map((walkin) => {
+            const sessionDate = walkinSessionDate(walkin);
+            return (
+              <form
+                className="data-row walkin-pay-row"
+                key={walkin.id}
+                action={recordWalkinPaymentAction}
+              >
+                <input type="hidden" name="id" value={walkin.id} />
+                <div>
+                  <strong>Vãng lai #{walkin.walkin_number}</strong>
+                  <div className="muted">
+                    {walkinTypeLabels[walkin.fee_type] || walkin.fee_type}
+                    {sessionDate ? ` · ${formatDateVN(sessionDate)}` : ""}
+                  </div>
+                  <div className="muted">Phải thu {money(walkin.amount_expected)}</div>
+                </div>
+                <div>
+                  <label>Số tiền thu</label>
+                  <input
+                    name="amount_collected"
+                    type="number"
+                    min="1"
+                    defaultValue={walkinOutstandingAmount(walkin)}
+                    required
+                  />
+                </div>
+                <AdminPinField />
+                <button className="btn-primary small-btn" type="submit">
+                  Xác nhận thu
+                </button>
+              </form>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="section-title">Khoản thành viên chưa thu</div>
         <div className="table-list">
           {unpaidCharges.length === 0 && (
-            <div className="empty">Không còn khoản chưa thu.</div>
+            <div className="empty">Không còn khoản thành viên chưa thu.</div>
           )}
           {unpaidCharges.map((charge) => (
             <form

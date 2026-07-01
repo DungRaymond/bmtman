@@ -104,7 +104,7 @@ function MemberCollectionCard({
         {card.previousDebt > 0 && (
           <CardLine
             label="Nợ tồn từ tháng trước"
-            helper="Các khoản trước tháng đang xem chưa thanh toán"
+            helper="Khoản cũ chưa thanh toán"
             value={money(card.previousDebt)}
           />
         )}
@@ -112,15 +112,11 @@ function MemberCollectionCard({
 
       {card.unpaidItems.length > 0 && (
         <div className="collection-card-unpaid">
-          <span>Khoản chưa thanh toán</span>
-          {card.unpaidItems.slice(0, 5).map((item) => (
-            <div key={item.chargeId}>
-              <small>
-                {item.period} · {item.label}
-              </small>
-              <strong>{money(item.outstanding)}</strong>
-            </div>
-          ))}
+          <div>
+            <span>Chờ thanh toán</span>
+            <small>{card.unpaidItems.length} khoản</small>
+          </div>
+          <strong>{money(card.outstanding)}</strong>
         </div>
       )}
 

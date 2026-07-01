@@ -322,35 +322,36 @@ code {
 
 .collection-card-unpaid {
   margin: 16px 24px 0;
-  padding: 12px;
-  background: rgba(69, 26, 3, 0.38);
-  border: 1px solid rgba(245, 158, 11, 0.34);
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(146, 64, 14, 0.48), rgba(69, 26, 3, 0.36));
+  border: 1px solid rgba(245, 158, 11, 0.46);
   border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 247, 220, 0.08);
 }
 
-.collection-card-unpaid > span {
+.collection-card-unpaid span {
   display: block;
   color: #fcd34d;
   font-size: 12px;
   font-weight: 900;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  margin-bottom: 8px;
-}
-
-.collection-card-unpaid div {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 6px 0;
-  border-top: 1px solid rgba(252, 211, 77, 0.16);
 }
 
 .collection-card-unpaid small {
-  color: #fde68a;
+  color: #fed7aa;
+  display: block;
+  font-size: 11px;
+  margin-top: 3px;
 }
 
 .collection-card-unpaid strong {
   color: #fff7dc;
+  font-size: 18px;
   white-space: nowrap;
 }
 
@@ -543,6 +544,10 @@ button {
   grid-template-columns: minmax(190px, 1.4fr) repeat(5, minmax(120px, 1fr)) auto;
 }
 
+.walkin-pay-row {
+  grid-template-columns: minmax(220px, 1.5fr) minmax(140px, 1fr) minmax(140px, 1fr) auto;
+}
+
 .muted {
   color: #94a3b8;
   font-size: 12px;
@@ -663,7 +668,8 @@ button {
   .grid2,
   .grid3,
   .data-row,
-  .pay-row {
+  .pay-row,
+  .walkin-pay-row {
     grid-template-columns: 1fr;
   }
 

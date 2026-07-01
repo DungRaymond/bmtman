@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getActiveMembers, getFeeAmount, getMemberStatus } from "@/lib/finance";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
-import { assertCanWrite } from "@/lib/security";
+import { assertAdmin } from "@/lib/security";
 
 function requiredString(formData: FormData, key: string) {
   const value = String(formData.get(key) || "").trim();
@@ -76,7 +76,6 @@ async function upsertSessionCharge(input: {
 }
 
 export async function createSessionAction(formData: FormData) {
-  assertCanWrite(formData);
   const date = requiredString(formData, "date");
   await ensureSession(date);
   revalidatePath("/");
@@ -84,7 +83,7 @@ export async function createSessionAction(formData: FormData) {
 }
 
 export async function setSessionCancelledAction(formData: FormData) {
-  assertCanWrite(formData);
+  assertAdmin(formData);
   const date = requiredString(formData, "date");
   const sessionId = intValue(formData, "session_id");
   const isCancelled = formData.get("is_cancelled") === "1" ? 1 : 0;
@@ -99,7 +98,6 @@ export async function setSessionCancelledAction(formData: FormData) {
 }
 
 export async function addMemberToSessionAction(formData: FormData) {
-  assertCanWrite(formData);
   const date = requiredString(formData, "date");
   const session = await ensureSession(date);
   const memberId = intValue(formData, "member_id");
@@ -141,7 +139,6 @@ export async function addMemberToSessionAction(formData: FormData) {
 }
 
 export async function updateSessionDoAction(formData: FormData) {
-  assertCanWrite(formData);
   const date = requiredString(formData, "date");
   const id = intValue(formData, "id");
   const memberId = intValue(formData, "member_id");
@@ -170,7 +167,6 @@ export async function updateSessionDoAction(formData: FormData) {
 }
 
 export async function addWalkinAction(formData: FormData) {
-  assertCanWrite(formData);
   const date = requiredString(formData, "date");
   const session = await ensureSession(date);
   const walkinNumber = intValue(formData, "walkin_number");
@@ -193,8 +189,34 @@ export async function addWalkinAction(formData: FormData) {
   redirect(`/?date=${date}`);
 }
 
+export async function createWalkinReceivableAction(formData: FormData) {
+  assertAdmin(formData);
+  const date = requiredString(formData, "date");
+  const session = await ensureSession(date);
+  const walkinNumber = intValue(formData, "walkin_number");
+  const amount = await getFeeAmount("walkin", "base_fee", date);
+  if (amount <= 0) throw new Error("Chua cau hinh phi vang lai trong fee_rules.");
+
+  const { error } = await getSupabaseAdmin().from("session_walkins").upsert(
+    {
+      session_id: session.session_id,
+      walkin_number: walkinNumber,
+      fee_type: "session_fee",
+      amount_expected: amount,
+      is_paid: 0,
+      amount_collected: null,
+    },
+    { onConflict: "session_id,walkin_number,fee_type" }
+  );
+  if (error) throw error;
+
+  revalidatePath("/thu");
+  revalidatePath("/tong-hop");
+  redirect("/thu");
+}
+
 export async function toggleWalkinPaidAction(formData: FormData) {
-  assertCanWrite(formData);
+  assertAdmin(formData);
   const date = requiredString(formData, "date");
   const id = intValue(formData, "id");
   const { data, error: findError } = await getSupabaseAdmin()
@@ -218,8 +240,27 @@ export async function toggleWalkinPaidAction(formData: FormData) {
   redirect(`/?date=${date}`);
 }
 
+export async function recordWalkinPaymentAction(formData: FormData) {
+  assertAdmin(formData);
+  const id = intValue(formData, "id");
+  const amountCollected = intValue(formData, "amount_collected");
+  if (amountCollected <= 0) throw new Error("So tien thu phai lon hon 0.");
+
+  const { error } = await getSupabaseAdmin()
+    .from("session_walkins")
+    .update({
+      is_paid: 1,
+      amount_collected: amountCollected,
+    })
+    .eq("id", id);
+  if (error) throw error;
+
+  revalidatePath("/thu");
+  revalidatePath("/tong-hop");
+  redirect("/thu");
+}
+
 export async function addWalkinDoFeeAction(formData: FormData) {
-  assertCanWrite(formData);
   const date = requiredString(formData, "date");
   const session = await ensureSession(date);
   const walkinNumber = intValue(formData, "walkin_number");
@@ -245,7 +286,7 @@ export async function addWalkinDoFeeAction(formData: FormData) {
 }
 
 export async function createManualChargeAction(formData: FormData) {
-  assertCanWrite(formData);
+  assertAdmin(formData);
   const memberId = intValue(formData, "member_id");
   const chargeType = requiredString(formData, "charge_type");
   const amount = intValue(formData, "amount");
@@ -268,7 +309,7 @@ export async function createManualChargeAction(formData: FormData) {
 }
 
 export async function recordPaymentAction(formData: FormData) {
-  assertCanWrite(formData);
+  assertAdmin(formData);
   const chargeId = intValue(formData, "charge_id");
   const amountPaid = intValue(formData, "amount_paid");
   const paidDate = requiredString(formData, "paid_date");
@@ -292,7 +333,7 @@ export async function recordPaymentAction(formData: FormData) {
 }
 
 export async function createExpenseAction(formData: FormData) {
-  assertCanWrite(formData);
+  assertAdmin(formData);
   const expenseDate = requiredString(formData, "expense_date");
   const category = requiredString(formData, "category");
   const amount = intValue(formData, "amount");
@@ -312,7 +353,7 @@ export async function createExpenseAction(formData: FormData) {
 }
 
 export async function createMonthlySnapshotAction(formData: FormData) {
-  assertCanWrite(formData);
+  assertAdmin(formData);
   const periodMonth = requiredString(formData, "period_month");
   const openingBalance = intValue(formData, "opening_balance");
   const closingBalanceRaw = String(formData.get("closing_balance") || "").trim();
@@ -334,7 +375,7 @@ export async function createMonthlySnapshotAction(formData: FormData) {
 }
 
 export async function generateMonthlyFixedFeesAction(formData: FormData) {
-  assertCanWrite(formData);
+  assertAdmin(formData);
   const periodMonth = requiredString(formData, "period_month");
   const applyDate = `${periodMonth}-01`;
   const fixedFee = await getFeeAmount("fixed", "base_fee", applyDate);

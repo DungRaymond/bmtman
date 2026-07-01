@@ -66,7 +66,6 @@ export default async function Home({ searchParams }: PageProps) {
           <p className="muted">Chưa có buổi đánh cho ngày này.</p>
           <form className="stack-form" action={createSessionAction}>
             <input type="hidden" name="date" value={date} />
-            <AdminPinField />
             <button className="btn-primary" type="submit">
               Tạo buổi đánh
             </button>
@@ -110,7 +109,8 @@ export default async function Home({ searchParams }: PageProps) {
                   <option value="">Chọn người</option>
                   {availableMembers.map((row) => (
                     <option key={row.member_id} value={row.member_id}>
-                      {row.member.name} ({row.status === "fixed" ? "cố định" : "cố định cũ"})
+                      {row.member.name} (
+                      {row.status === "fixed" ? "cố định" : "cố định cũ"})
                     </option>
                   ))}
                 </select>
@@ -119,7 +119,6 @@ export default async function Home({ searchParams }: PageProps) {
                 <label>Độ / tiền độ</label>
                 <input name="do_points" type="number" min="0" defaultValue="0" />
               </div>
-              <AdminPinField />
               <button className="btn-primary" type="submit">
                 Thêm vào buổi
               </button>
@@ -164,7 +163,6 @@ export default async function Home({ searchParams }: PageProps) {
                       defaultValue={participant.do_points}
                     />
                   </div>
-                  <AdminPinField />
                   <button className="btn-secondary small-btn" type="submit">
                     Cập nhật
                   </button>
@@ -190,7 +188,10 @@ export default async function Home({ searchParams }: PageProps) {
                     >
                       <input type="hidden" name="date" value={date} />
                       {sessionFee ? (
-                        <input type="hidden" name="id" value={sessionFee.id} />
+                        <>
+                          <input type="hidden" name="id" value={sessionFee.id} />
+                          <AdminPinField />
+                        </>
                       ) : (
                         <input
                           type="hidden"
@@ -198,7 +199,6 @@ export default async function Home({ searchParams }: PageProps) {
                           value={number}
                         />
                       )}
-                      <AdminPinField />
                       <button
                         className={
                           "walkin-button " +
@@ -231,7 +231,6 @@ export default async function Home({ searchParams }: PageProps) {
                 <label>Tiền độ</label>
                 <input name="amount" type="number" min="1" required />
               </div>
-              <AdminPinField />
               <button className="btn-secondary" type="submit">
                 Thêm độ vãng lai
               </button>

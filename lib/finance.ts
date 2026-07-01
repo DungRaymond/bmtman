@@ -37,6 +37,10 @@ export type SessionWalkin = {
   note: string | null;
 };
 
+export type WalkinReceivable = SessionWalkin & {
+  sessions?: { session_date: string } | { session_date: string }[] | null;
+};
+
 export type Charge = {
   charge_id: number;
   member_id: number;
@@ -164,6 +168,21 @@ export function outstandingAmount(charge: Charge) {
   return Math.max(charge.amount - paidAmount(charge), 0);
 }
 
+export function walkinCollectedAmount(walkin: SessionWalkin) {
+  return walkin.amount_collected || 0;
+}
+
+export function walkinOutstandingAmount(walkin: SessionWalkin) {
+  return Math.max(walkin.amount_expected - walkinCollectedAmount(walkin), 0);
+}
+
+export function walkinSessionDate(walkin: WalkinReceivable) {
+  const session = Array.isArray(walkin.sessions)
+    ? walkin.sessions[0]
+    : walkin.sessions;
+  return session?.session_date || "";
+}
+
 export async function getMembers() {
   if (!hasServerSupabaseConfig) return [];
   const { data, error } = await getSupabaseAdmin()
@@ -242,6 +261,18 @@ export async function getSessionWalkins(sessionId: number) {
     .order("fee_type", { ascending: false });
   if (error) throw error;
   return (data || []) as SessionWalkin[];
+}
+
+export async function getWalkinReceivables() {
+  if (!hasServerSupabaseConfig) return [];
+  const { data, error } = await getSupabaseAdmin()
+    .from("session_walkins")
+    .select("*,sessions(session_date)")
+    .order("is_paid", { ascending: true })
+    .order("id", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return (data || []) as WalkinReceivable[];
 }
 
 export async function getCharges() {
