@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getFeeAmount, getMemberStatus } from "@/lib/finance";
+import { getActiveMembers, getFeeAmount, getMemberStatus } from "@/lib/finance";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 import { assertCanWrite } from "@/lib/security";
 
@@ -329,6 +329,44 @@ export async function createMonthlySnapshotAction(formData: FormData) {
   );
   if (error) throw error;
 
+  revalidatePath("/tong-hop");
+  redirect(`/tong-hop?month=${periodMonth}`);
+}
+
+export async function generateMonthlyFixedFeesAction(formData: FormData) {
+  assertCanWrite(formData);
+  const periodMonth = requiredString(formData, "period_month");
+  const applyDate = `${periodMonth}-01`;
+  const fixedFee = await getFeeAmount("fixed", "base_fee", applyDate);
+  if (fixedFee <= 0) throw new Error("Chưa cấu hình phí cố định trong fee_rules.");
+
+  const fixedMembers = (await getActiveMembers(applyDate)).filter(
+    (row) => row.status === "fixed"
+  );
+  const supabase = getSupabaseAdmin();
+
+  for (const row of fixedMembers) {
+    const { data: existing, error: findError } = await supabase
+      .from("charges")
+      .select("charge_id")
+      .eq("member_id", row.member_id)
+      .eq("charge_type", "monthly_fixed_fee")
+      .eq("period_month", periodMonth)
+      .maybeSingle();
+    if (findError) throw findError;
+    if (existing) continue;
+
+    const { error } = await supabase.from("charges").insert({
+      member_id: row.member_id,
+      charge_type: "monthly_fixed_fee",
+      amount: fixedFee,
+      period_month: periodMonth,
+      note: `Tự tạo tiền quỹ cố định tháng ${periodMonth}`,
+    });
+    if (error) throw error;
+  }
+
+  revalidatePath("/thu");
   revalidatePath("/tong-hop");
   redirect(`/tong-hop?month=${periodMonth}`);
 }

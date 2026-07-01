@@ -67,6 +67,31 @@ export type MemberBalance = {
   outstanding_debt: number;
 };
 
+export type MonthlyMemberCard = {
+  memberId: number;
+  memberNumber: string;
+  name: string;
+  status: "fixed" | "former_fixed";
+  fixedFee: number;
+  doFee: number;
+  giaoLuuFee: number;
+  otherFee: number;
+  totalDue: number;
+  totalPaid: number;
+  outstanding: number;
+  previousDebt: number;
+  currentUnpaid: number;
+  unpaidItems: {
+    chargeId: number;
+    label: string;
+    amount: number;
+    paid: number;
+    outstanding: number;
+    period: string;
+  }[];
+  chargeCount: number;
+};
+
 type ActiveMemberRow = {
   member_id: number;
   status: "fixed" | "former_fixed";
@@ -83,6 +108,11 @@ type AmountCollectedRow = {
 
 type AmountRow = {
   amount: number | null;
+};
+
+type MonthlyChargeRow = Charge & {
+  payments?: { amount_paid: number | null }[];
+  sessions?: { session_date: string } | { session_date: string }[] | null;
 };
 
 export const chargeTypeLabels: Record<string, string> = {
@@ -322,11 +352,114 @@ export async function getMonthSummary(month: string) {
   };
 }
 
+export async function getMonthlyMemberCards(month: string) {
+  if (!hasServerSupabaseConfig) return [] as MonthlyMemberCard[];
+
+  const activeMembers = await getActiveMembers(monthEndDate(month));
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("charges")
+    .select("*,payments(amount_paid),sessions(session_date)")
+    .limit(1000);
+  if (error) throw error;
+
+  const fixedBaseFee = await getFeeAmount("fixed", "base_fee", `${month}-01`);
+  const cards = new Map<number, MonthlyMemberCard>();
+
+  for (const row of activeMembers) {
+    cards.set(row.member_id, {
+      memberId: row.member_id,
+      memberNumber: String(row.member_id).padStart(2, "0"),
+      name: row.member.name,
+      status: row.status,
+      fixedFee: row.status === "fixed" ? fixedBaseFee : 0,
+      doFee: 0,
+      giaoLuuFee: 0,
+      otherFee: 0,
+      totalDue: row.status === "fixed" ? fixedBaseFee : 0,
+      totalPaid: 0,
+      outstanding: row.status === "fixed" ? fixedBaseFee : 0,
+      previousDebt: 0,
+      currentUnpaid: 0,
+      unpaidItems: [],
+      chargeCount: 0,
+    });
+  }
+
+  for (const charge of (data || []) as MonthlyChargeRow[]) {
+    const card = cards.get(charge.member_id);
+    if (!card) continue;
+
+    const amount = charge.amount || 0;
+    const paid = (charge.payments || []).reduce(
+      (sum, payment) => sum + (payment.amount_paid || 0),
+      0
+    );
+    const outstanding = Math.max(amount - paid, 0);
+    const period = chargePeriod(charge);
+    const isCurrentMonth = chargeBelongsToMonth(charge, month);
+
+    if (outstanding > 0 && period < month) {
+      card.previousDebt += outstanding;
+      card.unpaidItems.push({
+        chargeId: charge.charge_id,
+        label: chargeTypeLabels[charge.charge_type] || charge.charge_type,
+        amount,
+        paid,
+        outstanding,
+        period,
+      });
+    }
+
+    if (!isCurrentMonth) continue;
+
+    if (charge.charge_type === "monthly_fixed_fee") {
+      card.fixedFee = amount;
+    } else if (
+      charge.charge_type === "monthly_do_fee" ||
+      charge.charge_type === "session_do_fee"
+    ) {
+      card.doFee += amount;
+    } else if (charge.charge_type === "session_giaoluu_fee") {
+      card.giaoLuuFee += amount;
+    } else {
+      card.otherFee += amount;
+    }
+
+    card.totalPaid += paid;
+    if (outstanding > 0) {
+      card.currentUnpaid += outstanding;
+      card.unpaidItems.push({
+        chargeId: charge.charge_id,
+        label: chargeTypeLabels[charge.charge_type] || charge.charge_type,
+        amount,
+        paid,
+        outstanding,
+        period,
+      });
+    }
+    card.chargeCount += 1;
+  }
+
+  for (const card of cards.values()) {
+    card.totalDue = card.fixedFee + card.doFee + card.giaoLuuFee + card.otherFee;
+    card.outstanding = card.previousDebt + Math.max(card.totalDue - card.totalPaid, 0);
+  }
+
+  return Array.from(cards.values()).sort((a, b) => {
+    if (a.status !== b.status) return a.status === "fixed" ? -1 : 1;
+    if (b.outstanding !== a.outstanding) return b.outstanding - a.outstanding;
+    return a.name.localeCompare(b.name, "vi");
+  });
+}
+
 export async function getFeeAmount(
   status: "fixed" | "former_fixed" | "walkin",
   component: "base_fee" | "do_fee",
   date: string
 ) {
+  if (!hasServerSupabaseConfig) return 0;
+
   const { data, error } = await getSupabaseAdmin()
     .from("fee_rules")
     .select("amount")
@@ -345,4 +478,32 @@ export function nextMonth(month: string) {
   const [year, rawMonth] = month.split("-").map(Number);
   const d = new Date(Date.UTC(year, rawMonth, 1));
   return d.toISOString().slice(0, 10);
+}
+
+function monthEndDate(month: string) {
+  const [year, rawMonth] = month.split("-").map(Number);
+  const d = new Date(Date.UTC(year, rawMonth, 0));
+  return d.toISOString().slice(0, 10);
+}
+
+function chargeBelongsToMonth(charge: MonthlyChargeRow, month: string) {
+  if (charge.period_month === month) return true;
+
+  const session = Array.isArray(charge.sessions)
+    ? charge.sessions[0]
+    : charge.sessions;
+  if (session?.session_date?.startsWith(month)) return true;
+
+  return !charge.period_month && !charge.session_id && charge.created_at.startsWith(month);
+}
+
+function chargePeriod(charge: MonthlyChargeRow) {
+  if (charge.period_month) return charge.period_month;
+
+  const session = Array.isArray(charge.sessions)
+    ? charge.sessions[0]
+    : charge.sessions;
+  if (session?.session_date) return session.session_date.slice(0, 7);
+
+  return charge.created_at.slice(0, 7);
 }
