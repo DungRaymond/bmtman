@@ -608,6 +608,7 @@ export async function recordPaymentAction(formData: FormData) {
   assertAdmin(formData);
   const chargeId = intValue(formData, "charge_id");
   const amountPaid = intValue(formData, "amount_paid");
+  if (amountPaid <= 0) throw new Error("So tien thu phai lon hon 0.");
   const paidDate = requiredString(formData, "paid_date");
   const paymentMethod = requiredString(formData, "payment_method");
   const recordedByRaw = String(formData.get("recorded_by") || "").trim();

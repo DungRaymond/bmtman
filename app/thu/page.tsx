@@ -177,7 +177,6 @@ export default async function ThuPage() {
                     type="number"
                     min="1"
                     defaultValue={walkinOutstandingAmount(walkin)}
-                    required
                   />
                 </div>
                 <AdminPinField />
@@ -187,7 +186,6 @@ export default async function ThuPage() {
                 <button
                   className="btn-secondary small-btn"
                   formAction={deleteWalkinReceivableAction}
-                  formNoValidate
                   type="submit"
                 >
                   Xoa
@@ -228,7 +226,6 @@ export default async function ThuPage() {
                   type="number"
                   min="1"
                   defaultValue={outstandingAmount(charge)}
-                  required
                 />
               </div>
               <div>
@@ -237,7 +234,6 @@ export default async function ThuPage() {
                   name="paid_date"
                   type="date"
                   defaultValue={todayInputValue()}
-                  required
                 />
               </div>
               <div>
@@ -271,7 +267,6 @@ export default async function ThuPage() {
               <button
                 className="btn-secondary small-btn"
                 formAction={deleteChargeAction}
-                formNoValidate
                 type="submit"
               >
                 Xoa
