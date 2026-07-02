@@ -37,6 +37,31 @@ export type SessionWalkin = {
   note: string | null;
 };
 
+export type ScorePlayer = {
+  type: "empty" | "member" | "walkin";
+  memberId?: number;
+  walkinNumber?: number;
+};
+
+export type ScoreSet = {
+  id: string;
+  amount: number;
+  winner: "A" | "B" | null;
+  locked: boolean;
+  players: [ScorePlayer, ScorePlayer, ScorePlayer, ScorePlayer];
+};
+
+export type DailyScorecardPayload = {
+  sets: ScoreSet[];
+};
+
+export type DailyScorecard = {
+  score_date: string;
+  payload: DailyScorecardPayload;
+  settled_at: string | null;
+  updated_at: string | null;
+};
+
 export type WalkinReceivable = SessionWalkin & {
   sessions?: { session_date: string } | { session_date: string }[] | null;
 };
@@ -119,6 +144,13 @@ type MonthlyChargeRow = Charge & {
   sessions?: { session_date: string } | { session_date: string }[] | null;
 };
 
+type DailyScorecardRow = {
+  score_date: string;
+  payload: unknown;
+  settled_at: string | null;
+  updated_at: string | null;
+};
+
 export const chargeTypeLabels: Record<string, string> = {
   monthly_fixed_fee: "Quỹ cố định tháng",
   monthly_do_fee: "Tiền độ tháng",
@@ -181,6 +213,84 @@ export function walkinSessionDate(walkin: WalkinReceivable) {
     ? walkin.sessions[0]
     : walkin.sessions;
   return session?.session_date || "";
+}
+
+export function emptyScorePlayer(): ScorePlayer {
+  return { type: "empty" };
+}
+
+export function emptyScoreSet(index: number): ScoreSet {
+  return {
+    id: `set-${index}`,
+    amount: 0,
+    winner: null,
+    locked: false,
+    players: [
+      emptyScorePlayer(),
+      emptyScorePlayer(),
+      emptyScorePlayer(),
+      emptyScorePlayer(),
+    ],
+  };
+}
+
+export function normalizeScorecardPayload(raw: unknown): DailyScorecardPayload {
+  const source = isRecord(raw) && Array.isArray(raw.sets) ? raw.sets : [];
+  const sets = source.slice(0, 12).map((item, index) => normalizeScoreSet(item, index));
+  return { sets };
+}
+
+export function scorePlayerKey(player: ScorePlayer) {
+  if (player.type === "member" && player.memberId) return `member:${player.memberId}`;
+  if (player.type === "walkin" && player.walkinNumber) {
+    return `walkin:${player.walkinNumber}`;
+  }
+  return "";
+}
+
+export function parseScorePlayerKey(value: string): ScorePlayer {
+  const [type, rawId] = value.split(":");
+  const id = Number(rawId);
+  if (type === "member" && Number.isFinite(id) && id > 0) {
+    return { type: "member", memberId: Math.round(id) };
+  }
+  if (type === "walkin" && Number.isFinite(id) && id > 0) {
+    return { type: "walkin", walkinNumber: Math.round(id) };
+  }
+  return emptyScorePlayer();
+}
+
+function normalizeScoreSet(raw: unknown, index: number): ScoreSet {
+  const row = isRecord(raw) ? raw : {};
+  const players = Array.isArray(row.players) ? row.players : [];
+  return {
+    id: typeof row.id === "string" && row.id ? row.id : `set-${index + 1}`,
+    amount: normalizeNumber(row.amount),
+    winner: row.winner === "A" || row.winner === "B" ? row.winner : null,
+    locked: row.locked === true,
+    players: [
+      normalizeScorePlayer(players[0]),
+      normalizeScorePlayer(players[1]),
+      normalizeScorePlayer(players[2]),
+      normalizeScorePlayer(players[3]),
+    ],
+  };
+}
+
+function normalizeScorePlayer(raw: unknown): ScorePlayer {
+  if (!isRecord(raw)) return emptyScorePlayer();
+  if (raw.type === "member") return parseScorePlayerKey(`member:${String(raw.memberId || "")}`);
+  if (raw.type === "walkin") return parseScorePlayerKey(`walkin:${String(raw.walkinNumber || "")}`);
+  return emptyScorePlayer();
+}
+
+function normalizeNumber(raw: unknown) {
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 export async function getMembers() {
@@ -261,6 +371,38 @@ export async function getSessionWalkins(sessionId: number) {
     .order("fee_type", { ascending: false });
   if (error) throw error;
   return (data || []) as SessionWalkin[];
+}
+
+export async function getDailyScorecard(date: string) {
+  if (!hasServerSupabaseConfig) {
+    return {
+      score_date: date,
+      payload: { sets: [] },
+      settled_at: null,
+      updated_at: null,
+    } satisfies DailyScorecard;
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("daily_scorecards")
+    .select("*")
+    .eq("score_date", date)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    return {
+      score_date: date,
+      payload: { sets: [] },
+      settled_at: null,
+      updated_at: null,
+    } satisfies DailyScorecard;
+  }
+
+  const row = data as DailyScorecardRow;
+  return {
+    ...row,
+    payload: normalizeScorecardPayload(row.payload),
+  } satisfies DailyScorecard;
 }
 
 export async function getWalkinReceivables() {

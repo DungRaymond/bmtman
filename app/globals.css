@@ -583,6 +583,218 @@ code {
   white-space: nowrap;
 }
 
+.scoreboard-head {
+  background: #163327;
+  border: 1px solid rgba(74, 222, 128, 0.22);
+  border-radius: 8px;
+  padding: 18px;
+  margin: 4px 0 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: end;
+}
+
+.scoreboard-head span,
+.score-settle-card span {
+  color: #86efac;
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.scoreboard-head h1 {
+  color: #f8fafc;
+  font-size: 36px;
+}
+
+.scoreboard-head p {
+  color: #a7f3d0;
+  margin-top: 6px;
+}
+
+.scoreboard-toolbar,
+.score-settle-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.scoreboard-toolbar div {
+  text-align: right;
+}
+
+.scoreboard-toolbar strong,
+.score-settle-card strong {
+  color: #f8fafc;
+  display: block;
+  font-size: 20px;
+}
+
+.scoreboard-toolbar span {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.match-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.match-empty {
+  grid-column: 1 / -1;
+}
+
+.match-card {
+  background: #172033;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+}
+
+.match-card.locked {
+  border-color: rgba(74, 222, 128, 0.38);
+  background: #10251f;
+}
+
+.match-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.match-card-head > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.match-card-head span {
+  color: #93c5fd;
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.match-card-head strong {
+  color: #f8fafc;
+  display: block;
+  font-size: 24px;
+}
+
+.match-card-head b {
+  color: #86efac;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.match-card-head input {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.match-teams {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.match-team {
+  background: #0f172a;
+  border: 1px solid #273449;
+  border-radius: 8px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.match-team.winner {
+  border-color: rgba(74, 222, 128, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.18);
+}
+
+.match-side-title {
+  color: #f8fafc;
+  font-weight: 900;
+}
+
+.score-slot {
+  margin: 0;
+}
+
+.score-slot > span {
+  color: #94a3b8;
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.score-slot.locked {
+  background: #132238;
+  border: 1px solid #273449;
+  border-radius: 8px;
+  padding: 9px 10px;
+}
+
+.score-slot.locked strong {
+  color: #e2e8f0;
+  display: block;
+  font-size: 13px;
+}
+
+.match-win-button {
+  background: #334155;
+  color: #e2e8f0;
+  border: 1px solid #475569;
+}
+
+.match-team.winner .match-win-button {
+  background: #22c55e;
+  color: #052e12;
+  border-color: #22c55e;
+}
+
+.match-lock-button {
+  background: #facc15;
+  color: #422006;
+}
+
+.match-card-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.score-settle-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.7);
+  opacity: 0.55;
+}
+
 .row {
   display: flex;
   gap: 8px;
@@ -795,6 +1007,9 @@ button {
   .app-shell-header,
   .page-title,
   .score-hero,
+  .scoreboard-head,
+  .scoreboard-toolbar,
+  .score-settle-card,
   .score-start-card,
   .score-section-head {
     align-items: stretch;
@@ -832,6 +1047,13 @@ button {
   }
 
   .score-date-form {
+    grid-template-columns: 1fr;
+  }
+
+  .match-card-grid,
+  .match-teams,
+  .match-card-actions,
+  .score-settle-form {
     grid-template-columns: 1fr;
   }
 

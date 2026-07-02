@@ -2,7 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getActiveMembers, getFeeAmount, getMemberStatus } from "@/lib/finance";
+import {
+  getActiveMembers,
+  getDailyScorecard,
+  getFeeAmount,
+  getMemberStatus,
+  normalizeScorecardPayload,
+  parseScorePlayerKey,
+  type DailyScorecardPayload,
+  type ScoreSet,
+} from "@/lib/finance";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 import { assertAdmin } from "@/lib/security";
 
@@ -75,10 +84,273 @@ async function upsertSessionCharge(input: {
   if (error) throw error;
 }
 
+async function saveDailyScorecard(date: string, payload: DailyScorecardPayload) {
+  const { error } = await getSupabaseAdmin().from("daily_scorecards").upsert(
+    {
+      score_date: date,
+      payload,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "score_date" }
+  );
+  if (error) throw error;
+}
+
+function scoreSetFromForm(formData: FormData, fallback: ScoreSet) {
+  const amount = intValue(formData, "amount");
+  const winnerRaw = String(formData.get("winner") || "").trim();
+  return {
+    ...fallback,
+    amount,
+    winner: winnerRaw === "A" || winnerRaw === "B" ? winnerRaw : fallback.winner,
+    players: [
+      parseScorePlayerKey(String(formData.get("player_0") || "")),
+      parseScorePlayerKey(String(formData.get("player_1") || "")),
+      parseScorePlayerKey(String(formData.get("player_2") || "")),
+      parseScorePlayerKey(String(formData.get("player_3") || "")),
+    ],
+  } satisfies ScoreSet;
+}
+
+function scoreSetIsReady(set: ScoreSet) {
+  return (
+    set.amount > 0 &&
+    !!set.winner &&
+    set.players.every((player) => player.type !== "empty")
+  );
+}
+
+function scoreSetHasDuplicatePlayers(set: ScoreSet) {
+  const keys = set.players.map((player) => {
+    if (player.type === "member") return `m:${player.memberId}`;
+    if (player.type === "walkin") return `w:${player.walkinNumber}`;
+    return "";
+  });
+  return new Set(keys).size !== keys.length;
+}
+
+function losingPlayers(set: ScoreSet) {
+  return set.winner === "A" ? set.players.slice(2, 4) : set.players.slice(0, 2);
+}
+
+function presentPlayers(set: ScoreSet) {
+  return set.players.filter((player) => player.type !== "empty");
+}
+
+function addToMap(map: Map<number, number>, key: number, value: number) {
+  map.set(key, (map.get(key) || 0) + value);
+}
+
+function assertScorecardIsOpen(settledAt: string | null) {
+  if (settledAt) {
+    throw new Error("Ngay nay da chot so do, khong the sua them.");
+  }
+}
+
 export async function createSessionAction(formData: FormData) {
   const date = requiredString(formData, "date");
   await ensureSession(date);
   revalidatePath("/");
+  redirect(`/?date=${date}`);
+}
+
+export async function addScoreSetAction(formData: FormData) {
+  const date = requiredString(formData, "date");
+  const card = await getDailyScorecard(date);
+  assertScorecardIsOpen(card.settled_at);
+  const payload = normalizeScorecardPayload(card.payload);
+  if (payload.sets.length >= 12) {
+    throw new Error("Mot ngay toi da 12 the ghi do.");
+  }
+
+  payload.sets.push({
+    id: globalThis.crypto.randomUUID(),
+    amount: 0,
+    winner: null,
+    locked: false,
+    players: [
+      { type: "empty" },
+      { type: "empty" },
+      { type: "empty" },
+      { type: "empty" },
+    ],
+  });
+
+  await saveDailyScorecard(date, payload);
+  revalidatePath("/");
+  redirect(`/?date=${date}`);
+}
+
+export async function saveScoreSetAction(formData: FormData) {
+  const date = requiredString(formData, "date");
+  const setId = requiredString(formData, "set_id");
+  const intent = String(formData.get("intent") || "save");
+  const card = await getDailyScorecard(date);
+  assertScorecardIsOpen(card.settled_at);
+  const payload = normalizeScorecardPayload(card.payload);
+  const index = payload.sets.findIndex((set) => set.id === setId);
+  if (index < 0) throw new Error("Khong tim thay the ghi do.");
+
+  const existing = payload.sets[index];
+  if (existing.locked) {
+    redirect(`/?date=${date}`);
+  }
+
+  const updated = scoreSetFromForm(formData, existing);
+  if (intent === "winner_a") updated.winner = "A";
+  if (intent === "winner_b") updated.winner = "B";
+  if (intent === "lock") {
+    if (!scoreSetIsReady(updated)) {
+      throw new Error("Can chon du 4 nguoi, nhap tien do va chon ben thang truoc khi khoa.");
+    }
+    if (scoreSetHasDuplicatePlayers(updated)) {
+      throw new Error("Mot the khong duoc chon trung nguoi cho nhieu slot.");
+    }
+    updated.locked = true;
+  }
+
+  payload.sets[index] = updated;
+  await saveDailyScorecard(date, payload);
+  revalidatePath("/");
+  redirect(`/?date=${date}`);
+}
+
+export async function deleteScoreSetAction(formData: FormData) {
+  const date = requiredString(formData, "date");
+  const setId = requiredString(formData, "set_id");
+  const card = await getDailyScorecard(date);
+  assertScorecardIsOpen(card.settled_at);
+  const payload = normalizeScorecardPayload(card.payload);
+  const target = payload.sets.find((set) => set.id === setId);
+  if (!target) throw new Error("Khong tim thay the ghi do.");
+  if (target.locked) throw new Error("The da khoa, khong the xoa.");
+
+  payload.sets = payload.sets.filter((set) => set.id !== setId);
+  await saveDailyScorecard(date, payload);
+  revalidatePath("/");
+  redirect(`/?date=${date}`);
+}
+
+export async function settleDailyScorecardAction(formData: FormData) {
+  assertAdmin(formData);
+  const date = requiredString(formData, "date");
+  const card = await getDailyScorecard(date);
+  if (card.settled_at) {
+    redirect(`/?date=${date}`);
+  }
+  const payload = normalizeScorecardPayload(card.payload);
+  if (payload.sets.length === 0) throw new Error("Chua co the ghi do nao.");
+  if (payload.sets.some((set) => !set.locked)) {
+    throw new Error("Can khoa tat ca the ghi do truoc khi chot so.");
+  }
+
+  const session = await ensureSession(date);
+  const memberDo = new Map<number, number>();
+  const walkinDo = new Map<number, number>();
+  const presentMemberIds = new Set<number>();
+  const presentWalkinNumbers = new Set<number>();
+
+  for (const set of payload.sets) {
+    for (const player of presentPlayers(set)) {
+      if (player.type === "member" && player.memberId) {
+        presentMemberIds.add(player.memberId);
+      }
+      if (player.type === "walkin" && player.walkinNumber) {
+        presentWalkinNumbers.add(player.walkinNumber);
+      }
+    }
+
+    for (const player of losingPlayers(set)) {
+      if (player.type === "member" && player.memberId) {
+        addToMap(memberDo, player.memberId, set.amount);
+      }
+      if (player.type === "walkin" && player.walkinNumber) {
+        addToMap(walkinDo, player.walkinNumber, set.amount);
+      }
+    }
+  }
+
+  const supabase = getSupabaseAdmin();
+  const walkinFee = await getFeeAmount("walkin", "base_fee", date);
+
+  for (const memberId of presentMemberIds) {
+    const status = await getMemberStatus(memberId, date);
+    if (!status) continue;
+    const doPoints = memberDo.get(memberId) || 0;
+
+    const { error } = await supabase.from("session_do_points").upsert(
+      {
+        session_id: session.session_id,
+        member_id: memberId,
+        do_points: doPoints,
+      },
+      { onConflict: "session_id,member_id" }
+    );
+    if (error) throw error;
+
+    if (status === "former_fixed") {
+      const baseFee = await getFeeAmount("former_fixed", "base_fee", date);
+      await upsertSessionCharge({
+        memberId,
+        sessionId: session.session_id,
+        chargeType: "session_giaoluu_fee",
+        amount: baseFee,
+        note: "Tu tao khi chot so do ngay",
+      });
+      await upsertSessionCharge({
+        memberId,
+        sessionId: session.session_id,
+        chargeType: "session_do_fee",
+        amount: doPoints,
+        note: "Tu tong hop tu the ghi do ngay",
+      });
+    }
+  }
+
+  for (const walkinNumber of presentWalkinNumbers) {
+    const { error } = await supabase.from("session_walkins").upsert(
+      {
+        session_id: session.session_id,
+        walkin_number: walkinNumber,
+        fee_type: "session_fee",
+        amount_expected: walkinFee,
+        is_paid: 0,
+        amount_collected: null,
+        note: "Tu tao khi chot so do ngay",
+      },
+      { onConflict: "session_id,walkin_number,fee_type" }
+    );
+    if (error) throw error;
+  }
+
+  for (const [walkinNumber, amount] of walkinDo.entries()) {
+    const { error } = await supabase.from("session_walkins").upsert(
+      {
+        session_id: session.session_id,
+        walkin_number: walkinNumber,
+        fee_type: "do_fee",
+        amount_expected: amount,
+        is_paid: 1,
+        amount_collected: amount,
+        note: "Tu tong hop tu the ghi do ngay",
+      },
+      { onConflict: "session_id,walkin_number,fee_type" }
+    );
+    if (error) throw error;
+  }
+
+  const { error } = await supabase
+    .from("daily_scorecards")
+    .update({
+      settled_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("score_date", date);
+  if (error) throw error;
+
+  revalidatePath("/");
+  revalidatePath("/thu");
+  revalidatePath("/tong-hop");
   redirect(`/?date=${date}`);
 }
 
