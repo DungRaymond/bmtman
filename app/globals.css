@@ -437,6 +437,68 @@ code {
   margin-left: 4px;
 }
 
+.walkin-day-list {
+  display: grid;
+  gap: 12px;
+}
+
+.walkin-day-card {
+  background: #0f172a;
+  border: 1px solid #273449;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.walkin-day-head {
+  background: #142133;
+  border-bottom: 1px solid #273449;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.walkin-day-head strong {
+  color: #f8fafc;
+  display: block;
+}
+
+.walkin-day-head span,
+.walkin-day-item span {
+  color: #94a3b8;
+  display: block;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.walkin-day-head b,
+.walkin-day-item b {
+  color: #4ade80;
+  white-space: nowrap;
+}
+
+.walkin-day-items {
+  display: grid;
+}
+
+.walkin-day-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #1f2d42;
+}
+
+.walkin-day-item:last-child {
+  border-bottom: none;
+}
+
+.walkin-day-item strong {
+  color: #e2e8f0;
+}
+
 .score-hero {
   background: #163327;
   border: 1px solid rgba(74, 222, 128, 0.22);

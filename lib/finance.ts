@@ -66,6 +66,10 @@ export type WalkinReceivable = SessionWalkin & {
   sessions?: { session_date: string } | { session_date: string }[] | null;
 };
 
+export type PaidWalkinByDay = SessionWalkin & {
+  sessions?: { session_date: string } | { session_date: string }[] | null;
+};
+
 export type Charge = {
   charge_id: number;
   member_id: number;
@@ -415,6 +419,21 @@ export async function getWalkinReceivables() {
     .limit(200);
   if (error) throw error;
   return (data || []) as WalkinReceivable[];
+}
+
+export async function getPaidWalkinsByMonth(month: string) {
+  if (!hasServerSupabaseConfig) return [];
+  const { data, error } = await getSupabaseAdmin()
+    .from("session_walkins")
+    .select("*,sessions!inner(session_date)")
+    .eq("is_paid", 1)
+    .gte("sessions.session_date", `${month}-01`)
+    .lt("sessions.session_date", nextMonth(month))
+    .order("session_date", { referencedTable: "sessions", ascending: false })
+    .order("walkin_number", { ascending: true })
+    .order("fee_type", { ascending: false });
+  if (error) throw error;
+  return (data || []) as PaidWalkinByDay[];
 }
 
 export async function getCharges() {
