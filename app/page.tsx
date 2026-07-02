@@ -17,6 +17,7 @@ import {
   type ScoreSet,
 } from "@/lib/finance";
 
+
 export const dynamic = "force-dynamic";
 
 type PageProps = {
