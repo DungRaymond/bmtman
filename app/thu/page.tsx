@@ -1,6 +1,8 @@
 import {
   createManualChargeAction,
   createWalkinReceivableAction,
+  deleteChargeAction,
+  deleteWalkinReceivableAction,
   recordPaymentAction,
   recordWalkinPaymentAction,
 } from "@/app/actions";
@@ -25,8 +27,8 @@ import {
 export const dynamic = "force-dynamic";
 
 const walkinTypeLabels: Record<string, string> = {
-  session_fee: "Vãng lai theo buổi",
-  do_fee: "Tiền độ vãng lai",
+  session_fee: "Vang lai theo buoi",
+  do_fee: "Tien do vang lai",
 };
 
 export default async function ThuPage() {
@@ -50,35 +52,35 @@ export default async function ThuPage() {
 
       <section className="page-title">
         <div>
-          <h1>Quản lý thu</h1>
-          <p>Theo dõi khoản phải thu, ghi nhận thanh toán và công nợ.</p>
+          <h1>Quan ly thu</h1>
+          <p>Theo doi khoan phai thu, ghi nhan thanh toan va cong no.</p>
         </div>
       </section>
 
       <section className="summary-grid">
         <div className="metric">
-          <span>Nợ thành viên</span>
+          <span>No thanh vien</span>
           <strong>{money(totalMemberDebt)}</strong>
         </div>
         <div className="metric">
-          <span>Khoản thành viên chưa thu</span>
+          <span>Khoan thanh vien chua thu</span>
           <strong>{unpaidCharges.length}</strong>
         </div>
         <div className="metric">
-          <span>Vãng lai chưa thu</span>
+          <span>Vang lai chua thu</span>
           <strong>{money(totalWalkinDebt)}</strong>
         </div>
       </section>
 
       <section className="card">
-        <div className="section-title">Tạo khoản thu vãng lai theo buổi</div>
+        <div className="section-title">Tao khoan thu vang lai theo buoi</div>
         <form className="grid3" action={createWalkinReceivableAction}>
           <div>
-            <label>Ngày buổi chơi</label>
+            <label>Ngay buoi choi</label>
             <input name="date" type="date" defaultValue={todayInputValue()} required />
           </div>
           <div>
-            <label>Số thứ tự vãng lai</label>
+            <label>So thu tu vang lai</label>
             <input
               name="walkin_number"
               type="number"
@@ -88,23 +90,23 @@ export default async function ThuPage() {
             />
           </div>
           <div>
-            <label>Mức thu</label>
-            <input value="80.000đ / buổi" readOnly />
+            <label>Muc thu</label>
+            <input value="80.000d / buoi" readOnly />
           </div>
           <AdminPinField />
           <button className="btn-primary" type="submit">
-            Tạo khoản vãng lai
+            Tao khoan vang lai
           </button>
         </form>
       </section>
 
       <section className="card">
-        <div className="section-title">Tạo khoản phải thu thủ công</div>
+        <div className="section-title">Tao khoan phai thu thu cong</div>
         <form className="grid3" action={createManualChargeAction}>
           <div>
-            <label>Thành viên</label>
+            <label>Thanh vien</label>
             <select name="member_id" required>
-              <option value="">Chọn người</option>
+              <option value="">Chon nguoi</option>
               {members.map((member) => (
                 <option key={member.member_id} value={member.member_id}>
                   {member.name}
@@ -113,7 +115,7 @@ export default async function ThuPage() {
             </select>
           </div>
           <div>
-            <label>Loại khoản thu</label>
+            <label>Loai khoan thu</label>
             <select name="charge_type" required>
               {Object.entries(chargeTypeLabels).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -123,33 +125,33 @@ export default async function ThuPage() {
             </select>
           </div>
           <div>
-            <label>Số tiền</label>
+            <label>So tien</label>
             <input name="amount" type="number" min="1" required />
           </div>
           <div>
-            <label>Tháng áp dụng</label>
+            <label>Thang ap dung</label>
             <input name="period_month" type="month" defaultValue={currentMonthValue()} />
           </div>
           <div>
-            <label>Tên sự kiện</label>
-            <input name="event_name" placeholder="VD: Giải nội bộ" />
+            <label>Ten su kien</label>
+            <input name="event_name" placeholder="VD: Giai noi bo" />
           </div>
           <div>
-            <label>Ghi chú</label>
+            <label>Ghi chu</label>
             <input name="note" />
           </div>
           <AdminPinField />
           <button className="btn-primary" type="submit">
-            Tạo khoản thu
+            Tao khoan thu
           </button>
         </form>
       </section>
 
       <section className="card">
-        <div className="section-title">Vãng lai chưa thu</div>
+        <div className="section-title">Vang lai chua thu</div>
         <div className="table-list">
           {unpaidWalkins.length === 0 && (
-            <div className="empty">Không còn khoản vãng lai chưa thu.</div>
+            <div className="empty">Khong con khoan vang lai chua thu.</div>
           )}
           {unpaidWalkins.map((walkin) => {
             const sessionDate = walkinSessionDate(walkin);
@@ -161,15 +163,15 @@ export default async function ThuPage() {
               >
                 <input type="hidden" name="id" value={walkin.id} />
                 <div>
-                  <strong>Vãng lai #{walkin.walkin_number}</strong>
+                  <strong>Vang lai #{walkin.walkin_number}</strong>
                   <div className="muted">
                     {walkinTypeLabels[walkin.fee_type] || walkin.fee_type}
-                    {sessionDate ? ` · ${formatDateVN(sessionDate)}` : ""}
+                    {sessionDate ? ` - ${formatDateVN(sessionDate)}` : ""}
                   </div>
-                  <div className="muted">Phải thu {money(walkin.amount_expected)}</div>
+                  <div className="muted">Phai thu {money(walkin.amount_expected)}</div>
                 </div>
                 <div>
-                  <label>Số tiền thu</label>
+                  <label>So tien thu</label>
                   <input
                     name="amount_collected"
                     type="number"
@@ -180,7 +182,15 @@ export default async function ThuPage() {
                 </div>
                 <AdminPinField />
                 <button className="btn-primary small-btn" type="submit">
-                  Xác nhận thu
+                  Xac nhan thu
+                </button>
+                <button
+                  className="btn-secondary small-btn"
+                  formAction={deleteWalkinReceivableAction}
+                  formNoValidate
+                  type="submit"
+                >
+                  Xoa
                 </button>
               </form>
             );
@@ -189,10 +199,10 @@ export default async function ThuPage() {
       </section>
 
       <section className="card">
-        <div className="section-title">Khoản thành viên chưa thu</div>
+        <div className="section-title">Khoan thanh vien chua thu</div>
         <div className="table-list">
           {unpaidCharges.length === 0 && (
-            <div className="empty">Không còn khoản thành viên chưa thu.</div>
+            <div className="empty">Khong con khoan thanh vien chua thu.</div>
           )}
           {unpaidCharges.map((charge) => (
             <form
@@ -202,17 +212,17 @@ export default async function ThuPage() {
             >
               <input type="hidden" name="charge_id" value={charge.charge_id} />
               <div>
-                <strong>{charge.members?.name || "Không rõ"}</strong>
+                <strong>{charge.members?.name || "Khong ro"}</strong>
                 <div className="muted">
                   {chargeTypeLabels[charge.charge_type] || charge.charge_type}
-                  {charge.period_month ? ` · ${charge.period_month}` : ""}
+                  {charge.period_month ? ` - ${charge.period_month}` : ""}
                 </div>
                 <div className="muted">
-                  Đã thu {money(paidAmount(charge))} / {money(charge.amount)}
+                  Da thu {money(paidAmount(charge))} / {money(charge.amount)}
                 </div>
               </div>
               <div>
-                <label>Số tiền thu</label>
+                <label>So tien thu</label>
                 <input
                   name="amount_paid"
                   type="number"
@@ -222,7 +232,7 @@ export default async function ThuPage() {
                 />
               </div>
               <div>
-                <label>Ngày thu</label>
+                <label>Ngay thu</label>
                 <input
                   name="paid_date"
                   type="date"
@@ -231,18 +241,18 @@ export default async function ThuPage() {
                 />
               </div>
               <div>
-                <label>Hình thức</label>
+                <label>Hinh thuc</label>
                 <select name="payment_method" defaultValue="bank_transfer">
-                  <option value="cash">Tiền mặt</option>
-                  <option value="bank_transfer">Chuyển khoản</option>
-                  <option value="e_wallet">Ví điện tử</option>
-                  <option value="other">Khác</option>
+                  <option value="cash">Tien mat</option>
+                  <option value="bank_transfer">Chuyen khoan</option>
+                  <option value="e_wallet">Vi dien tu</option>
+                  <option value="other">Khac</option>
                 </select>
               </div>
               <div>
-                <label>Người ghi nhận</label>
+                <label>Nguoi ghi nhan</label>
                 <select name="recorded_by">
-                  <option value="">Không chọn</option>
+                  <option value="">Khong chon</option>
                   {members.map((member) => (
                     <option key={member.member_id} value={member.member_id}>
                       {member.name}
@@ -251,12 +261,20 @@ export default async function ThuPage() {
                 </select>
               </div>
               <div>
-                <label>Ghi chú</label>
+                <label>Ghi chu</label>
                 <input name="note" />
               </div>
               <AdminPinField />
               <button className="btn-primary small-btn" type="submit">
-                Xác nhận thu
+                Xac nhan thu
+              </button>
+              <button
+                className="btn-secondary small-btn"
+                formAction={deleteChargeAction}
+                formNoValidate
+                type="submit"
+              >
+                Xoa
               </button>
             </form>
           ))}
@@ -264,13 +282,44 @@ export default async function ThuPage() {
       </section>
 
       <section className="card">
-        <div className="section-title">Công nợ thành viên</div>
+        <div className="section-title">Khoan thu gan day</div>
+        <div className="table-list">
+          {charges.length === 0 && <div className="empty">Chua co khoan thu nao.</div>}
+          {charges.slice(0, 30).map((charge) => (
+            <form
+              className="data-row charge-delete-row"
+              key={`recent-${charge.charge_id}`}
+              action={deleteChargeAction}
+            >
+              <input type="hidden" name="charge_id" value={charge.charge_id} />
+              <div>
+                <strong>{charge.members?.name || "Khong ro"}</strong>
+                <div className="muted">
+                  {chargeTypeLabels[charge.charge_type] || charge.charge_type}
+                  {charge.period_month ? ` - ${charge.period_month}` : ""}
+                </div>
+                <div className="muted">
+                  Da thu {money(paidAmount(charge))} / {money(charge.amount)}
+                </div>
+              </div>
+              <strong>{money(charge.amount)}</strong>
+              <AdminPinField />
+              <button className="btn-secondary small-btn" type="submit">
+                Xoa khoan thu
+              </button>
+            </form>
+          ))}
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="section-title">Cong no thanh vien</div>
         <div className="stats-table">
           <div className="stats-row stats-head">
-            <div className="stats-name">Thành viên</div>
-            <div>Phải thu</div>
-            <div>Đã thu</div>
-            <div>Còn nợ</div>
+            <div className="stats-name">Thanh vien</div>
+            <div>Phai thu</div>
+            <div>Da thu</div>
+            <div>Con no</div>
           </div>
           {balances.map((row) => (
             <div className="stats-row finance-row" key={row.member_id}>

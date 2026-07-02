@@ -113,19 +113,24 @@ function scoreSetFromForm(formData: FormData, fallback: ScoreSet) {
 }
 
 function scoreSetIsReady(set: ScoreSet) {
+  const sideA = set.players.slice(0, 2).filter((player) => player.type !== "empty");
+  const sideB = set.players.slice(2, 4).filter((player) => player.type !== "empty");
   return (
     set.amount > 0 &&
     !!set.winner &&
-    set.players.every((player) => player.type !== "empty")
+    sideA.length > 0 &&
+    sideB.length > 0
   );
 }
 
 function scoreSetHasDuplicatePlayers(set: ScoreSet) {
-  const keys = set.players.map((player) => {
-    if (player.type === "member") return `m:${player.memberId}`;
-    if (player.type === "walkin") return `w:${player.walkinNumber}`;
-    return "";
-  });
+  const keys = set.players
+    .map((player) => {
+      if (player.type === "member") return `m:${player.memberId}`;
+      if (player.type === "walkin") return `w:${player.walkinNumber}`;
+      return "";
+    })
+    .filter(Boolean);
   return new Set(keys).size !== keys.length;
 }
 
@@ -201,7 +206,7 @@ export async function saveScoreSetAction(formData: FormData) {
   if (intent === "winner_b") updated.winner = "B";
   if (intent === "lock") {
     if (!scoreSetIsReady(updated)) {
-      throw new Error("Can chon du 4 nguoi, nhap tien do va chon ben thang truoc khi khoa.");
+      throw new Error("Can co it nhat 1 nguoi moi ben, nhap tien do va chon ben thang truoc khi khoa.");
     }
     if (scoreSetHasDuplicatePlayers(updated)) {
       throw new Error("Mot the khong duoc chon trung nguoi cho nhieu slot.");
@@ -210,6 +215,25 @@ export async function saveScoreSetAction(formData: FormData) {
   }
 
   payload.sets[index] = updated;
+  await saveDailyScorecard(date, payload);
+  revalidatePath("/");
+  redirect(`/?date=${date}`);
+}
+
+export async function unlockScoreSetAction(formData: FormData) {
+  assertAdmin(formData);
+  const date = requiredString(formData, "date");
+  const setId = requiredString(formData, "set_id");
+  const card = await getDailyScorecard(date);
+  assertScorecardIsOpen(card.settled_at);
+  const payload = normalizeScorecardPayload(card.payload);
+  const index = payload.sets.findIndex((set) => set.id === setId);
+  if (index < 0) throw new Error("Khong tim thay the ghi do.");
+
+  payload.sets[index] = {
+    ...payload.sets[index],
+    locked: false,
+  };
   await saveDailyScorecard(date, payload);
   revalidatePath("/");
   redirect(`/?date=${date}`);
@@ -597,6 +621,42 @@ export async function recordPaymentAction(formData: FormData) {
     recorded_by: recordedByRaw ? Number(recordedByRaw) : null,
     note,
   });
+  if (error) throw error;
+
+  revalidatePath("/thu");
+  revalidatePath("/tong-hop");
+  redirect("/thu");
+}
+
+export async function deleteChargeAction(formData: FormData) {
+  assertAdmin(formData);
+  const chargeId = intValue(formData, "charge_id");
+  const supabase = getSupabaseAdmin();
+
+  const { error: paymentsError } = await supabase
+    .from("payments")
+    .delete()
+    .eq("charge_id", chargeId);
+  if (paymentsError) throw paymentsError;
+
+  const { error } = await supabase
+    .from("charges")
+    .delete()
+    .eq("charge_id", chargeId);
+  if (error) throw error;
+
+  revalidatePath("/thu");
+  revalidatePath("/tong-hop");
+  redirect("/thu");
+}
+
+export async function deleteWalkinReceivableAction(formData: FormData) {
+  assertAdmin(formData);
+  const id = intValue(formData, "id");
+  const { error } = await getSupabaseAdmin()
+    .from("session_walkins")
+    .delete()
+    .eq("id", id);
   if (error) throw error;
 
   revalidatePath("/thu");

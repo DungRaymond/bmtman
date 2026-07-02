@@ -789,6 +789,15 @@ code {
   align-items: end;
 }
 
+.unlock-score-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding-top: 12px;
+  border-top: 1px solid #273449;
+}
+
 button:disabled {
   cursor: not-allowed;
   filter: grayscale(0.7);
@@ -899,11 +908,15 @@ button {
 }
 
 .pay-row {
-  grid-template-columns: minmax(190px, 1.4fr) repeat(5, minmax(120px, 1fr)) auto;
+  grid-template-columns: minmax(190px, 1.4fr) repeat(6, minmax(120px, 1fr)) auto auto;
 }
 
 .walkin-pay-row {
-  grid-template-columns: minmax(220px, 1.5fr) minmax(140px, 1fr) minmax(140px, 1fr) auto;
+  grid-template-columns: minmax(220px, 1.5fr) minmax(140px, 1fr) minmax(140px, 1fr) auto auto;
+}
+
+.charge-delete-row {
+  grid-template-columns: minmax(220px, 1.5fr) minmax(120px, 0.6fr) minmax(140px, 1fr) auto;
 }
 
 .muted {
@@ -1034,7 +1047,8 @@ button {
   .grid3,
   .data-row,
   .pay-row,
-  .walkin-pay-row {
+  .walkin-pay-row,
+  .charge-delete-row {
     grid-template-columns: 1fr;
   }
 
@@ -1053,6 +1067,7 @@ button {
   .match-card-grid,
   .match-teams,
   .match-card-actions,
+  .unlock-score-form,
   .score-settle-form {
     grid-template-columns: 1fr;
   }

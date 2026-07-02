@@ -3,6 +3,7 @@ import {
   deleteScoreSetAction,
   saveScoreSetAction,
   settleDailyScorecardAction,
+  unlockScoreSetAction,
 } from "@/app/actions";
 import { AdminPinField } from "@/app/components/AdminPinField";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
@@ -59,7 +60,7 @@ function PlayerSelect({
   return (
     <label className="score-slot">
       <span>{label}</span>
-      <select name={name} defaultValue={scorePlayerKey(player)} required>
+      <select name={name} defaultValue={scorePlayerKey(player)}>
         <option value="">Chon nguoi</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -134,6 +135,16 @@ function ScoreSetCard({
             />
           </div>
         </div>
+        {!readOnly && (
+          <form className="unlock-score-form" action={unlockScoreSetAction}>
+            <input type="hidden" name="date" value={date} />
+            <input type="hidden" name="set_id" value={set.id} />
+            <AdminPinField />
+            <button className="btn-secondary" type="submit">
+              Mo khoa de sua
+            </button>
+          </form>
+        )}
       </article>
     );
   }
