@@ -289,6 +289,31 @@ code {
   padding: 18px 24px 0;
 }
 
+.collection-card-empty {
+  color: #a8cdbd;
+  padding: 24px 0;
+  border-bottom: 1px solid rgba(209, 250, 229, 0.14);
+}
+
+.memfee-link-card {
+  grid-column: 1 / -1;
+}
+
+.memfee-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.memfee-save-panel {
+  margin-top: 18px;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .collection-card-line {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -457,6 +482,23 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.walkin-day-head::-webkit-details-marker {
+  display: none;
+}
+
+.walkin-day-head::before {
+  content: "+";
+  color: #94a3b8;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.walkin-day-card[open] .walkin-day-head::before {
+  content: "−";
 }
 
 .walkin-day-head strong {
@@ -476,6 +518,14 @@ code {
 .walkin-day-item b {
   color: #4ade80;
   white-space: nowrap;
+}
+
+.walkin-day-head b.missing {
+  color: #fca5a5;
+}
+
+.walkin-day-item b.missing {
+  color: #fca5a5;
 }
 
 .walkin-day-items {

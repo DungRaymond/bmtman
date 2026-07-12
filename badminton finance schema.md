@@ -47,11 +47,11 @@ CREATE TABLE sessions (
 -- Độ ghi nhận mỗi buổi, mỗi người có định danh (nguồn: app chấm độ)
 -- Vãng lai không có độ theo dõi qua bảng này (nếu vãng lai phát sinh độ,
 -- quy thẳng ra tiền và cộng vào session_walkins.fee_collected trong ngày).
-CREATE TABLE session_do_points (
+CREATE TABLE session_stake_points (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id      INTEGER NOT NULL REFERENCES sessions(session_id),
     member_id       INTEGER NOT NULL REFERENCES members(member_id),
-    do_points       INTEGER NOT NULL DEFAULT 0,
+    stake_points    INTEGER NOT NULL DEFAULT 0,
     UNIQUE (session_id, member_id)
 );
 
@@ -75,9 +75,9 @@ CREATE TABLE session_walkins (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id      INTEGER NOT NULL REFERENCES sessions(session_id),
     walkin_number   INTEGER NOT NULL,                 -- 1, 2, 3... thứ tự trong buổi (UI: nút "Vãng lai N")
-    fee_type        TEXT NOT NULL CHECK (fee_type IN ('session_fee','do_fee')),
+    fee_type        TEXT NOT NULL CHECK (fee_type IN ('session_fee','stake_fee')),
                         -- session_fee = phí giao lưu 80k/người (mặc định khi bấm nút)
-                        -- do_fee      = tiền độ phát sinh riêng (nếu có), thêm dòng riêng, không gộp
+                        -- stake_fee   = tiền độ phát sinh riêng (nếu có), thêm dòng riêng, không gộp
     amount_expected INTEGER NOT NULL DEFAULT 80000,   -- lấy từ fee_rules('walkin','base_fee') tại thời điểm tạo
     is_paid         INTEGER NOT NULL DEFAULT 0,       -- tick ngay trong buổi (0/1)
     amount_collected INTEGER,                          -- điền khi tick đã thu; NULL nếu chưa thu
@@ -95,10 +95,10 @@ CREATE TABLE session_walkins (
 CREATE TABLE fee_rules (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     member_status       TEXT NOT NULL CHECK (member_status IN ('fixed','former_fixed','walkin')),
-    fee_component       TEXT NOT NULL CHECK (fee_component IN ('base_fee','do_fee')),
+    fee_component       TEXT NOT NULL CHECK (fee_component IN ('base_fee','stake_fee')),
                             -- base_fee = phí cố định/phí giao lưu theo buổi
-                            -- do_fee   = tiền độ (amount NULL, tính từ session_do_points)
-    amount              INTEGER,               -- 500000 / 80000 / 60000; NULL nếu fee_component = 'do_fee'
+                            -- stake_fee = tiền độ (amount NULL, tính từ session_stake_points)
+    amount              INTEGER,               -- 500000 / 80000 / 60000; NULL nếu fee_component = 'stake_fee'
     collection_timing   TEXT NOT NULL CHECK (collection_timing IN ('same_day','monthly_next')),
                             -- same_day     = thu ngay trong buổi (vãng lai, giao lưu)
                             -- monthly_next = gộp thu đầu tháng sau (thành viên cố định)
@@ -110,11 +110,11 @@ CREATE TABLE fee_rules (
 -- Dữ liệu mẫu đúng theo quy tắc hiện tại:
 INSERT INTO fee_rules (member_status, fee_component, amount, collection_timing, effective_from) VALUES
     ('fixed',        'base_fee', 500000, 'monthly_next', '2026-01-01'),
-    ('fixed',        'do_fee',   NULL,   'monthly_next', '2026-01-01'),
+    ('fixed',        'stake_fee', NULL,  'monthly_next', '2026-01-01'),
     ('former_fixed', 'base_fee', 60000,  'same_day',      '2026-01-01'),
-    ('former_fixed', 'do_fee',   NULL,   'same_day',      '2026-01-01'),
+    ('former_fixed', 'stake_fee', NULL,  'same_day',      '2026-01-01'),
     ('walkin',       'base_fee', 80000,  'same_day',      '2026-01-01'),
-    ('walkin',       'do_fee',   NULL,   'same_day',      '2026-01-01');
+    ('walkin',       'stake_fee', NULL,  'same_day',      '2026-01-01');
 
 -- ---------- 4. KHOẢN PHẢI THU (chỉ áp dụng cho fixed / former_fixed) ----------
 -- Vãng lai KHÔNG đi qua bảng này — xem session_walkins.
@@ -123,9 +123,9 @@ CREATE TABLE charges (
     member_id       INTEGER NOT NULL REFERENCES members(member_id),
     charge_type     TEXT NOT NULL CHECK (charge_type IN (
                         'monthly_fixed_fee',    -- 500k/tháng, chỉ member fixed
-                        'monthly_do_fee',        -- tổng độ trong tháng, chỉ member fixed
+                        'monthly_stake_fee',     -- tổng độ trong tháng, chỉ member fixed
                         'session_giaoluu_fee',   -- 60k/buổi, chỉ member former_fixed
-                        'session_do_fee',        -- tiền độ buổi đó, chỉ member former_fixed
+                        'session_stake_fee',     -- tiền độ buổi đó, chỉ member former_fixed
                         'tournament_fee',        -- phí tổ chức giải, phát sinh riêng lẻ
                         'other'
                      )),
@@ -218,20 +218,20 @@ GROUP BY m.member_id, m.name;
 --       member_status_periods để biết status tại đúng ngày đó:
 --
 --       - status = 'fixed':
---           KHÔNG tạo charge ngay. Độ được cộng dồn vào session_do_points,
+--           KHÔNG tạo charge ngay. Độ được cộng dồn vào session_stake_points,
 --           đợi job cuối tháng gom lại (xem bước 2).
 --
 --       - status = 'former_fixed':
 --           Tạo NGAY 2 charge, collection_timing = 'same_day':
 --             i)  'session_giaoluu_fee' = fee_rules.amount (60k)
---             ii) 'session_do_fee'       = độ buổi đó quy ra tiền
+--             ii) 'session_stake_fee'    = độ buổi đó quy ra tiền
 --           Nếu cuối buổi CHƯA thu được -> charge vẫn "unpaid", KHÔNG cần
 --           thao tác gì thêm — tự động nằm trong nợ tồn, hiện lại ở màn
 --           hình thu đầu tháng sau (bước 3).
 --
 --    b) Với VÃNG LAI (không định danh): tạo 1-2 dòng session_walkins
 --       ngay trong buổi đó — 1 dòng fee_type='session_fee' (80k x headcount),
---       và 1 dòng fee_type='do_fee' NẾU có phát sinh độ (2 khoản này KHÔNG
+--       và 1 dòng fee_type='stake_fee' NẾU có phát sinh độ (2 khoản này KHÔNG
 --       được gộp chung 1 dòng, để tránh nhầm như trường hợp "80k giao lưu"
 --       của Việt Dũng ngày 30/06 — ban đầu tưởng là độ nhưng thực ra là phí
 --       giao lưu). amount_collected ghi đúng số thực nhận trong ngày; nếu
@@ -241,7 +241,7 @@ GROUP BY m.member_id, m.name;
 -- 2. JOB CUỐI THÁNG (chạy 1 lần khi chốt sổ), chỉ áp cho member status
 --    = 'fixed' TẠI THỜI ĐIỂM đó:
 --      - Tạo charge 'monthly_fixed_fee' = fee_rules.amount (500,000)
---      - Tạo charge 'monthly_do_fee' = SUM(session_do_points.do_points)
+--      - Tạo charge 'monthly_stake_fee' = SUM(session_stake_points.stake_points)
 --        quy đổi ra tiền, cho các session trong tháng đó (có thể = 0)
 --    Nhờ UNIQUE (member_id, charge_type, period_month), job này chạy
 --    lại nhiều lần trong tháng cũng không tạo trùng charge.
@@ -281,7 +281,7 @@ GROUP BY m.member_id, m.name;
 --   - Bấm lại đúng nút đó (đã tồn tại dòng) -> toggle is_paid, set
 --     amount_collected = amount_expected, collected_by = người đang đăng nhập.
 --   - Nếu vãng lai đó CÓ độ -> thêm 1 dòng riêng cùng walkin_number nhưng
---     fee_type='do_fee' (UI: 1 ô nhập nhanh ngay dưới nút, không phải nút
+--     fee_type='stake_fee' (UI: 1 ô nhập nhanh ngay dưới nút, không phải nút
 --     bấm sẵn vì số tiền độ thay đổi từng người).
 --   - Số nút hiển thị mặc định 1..7 chỉ là gợi ý UI cho các buổi thường
 --     (thường không quá 7 vãng lai/buổi) — app nên tự sinh thêm nút nếu
@@ -291,10 +291,10 @@ GROUP BY m.member_id, m.name;
 --   - Mở dropdown liệt kê members ĐANG có status 'fixed' hoặc 'former_fixed'
 --     TẠI NGÀY của session đó (join member_status_periods, lọc
 --     start_date <= session_date AND (end_date IS NULL OR end_date >= session_date)).
---   - Không hiện lại người đã có mặt trong session_do_points/charges của
+--   - Không hiện lại người đã có mặt trong session_stake_points/charges của
 --     đúng buổi đó (tránh thêm trùng — cũng được chặn cứng bởi UNIQUE
---     (session_id, member_id) ở session_do_points).
---   - Chọn xong 1 tên -> tạo dòng session_do_points (độ mặc định 0, sửa
+--     (session_id, member_id) ở session_stake_points).
+--   - Chọn xong 1 tên -> tạo dòng session_stake_points (độ mặc định 0, sửa
 --     sau) và nếu status='former_fixed' thì tạo luôn charge
 --     'session_giaoluu_fee' 60k như mô tả ở bước 1a. Nếu status='fixed'
 --     thì KHÔNG tạo charge ngay (dồn cuối tháng như thường lệ).

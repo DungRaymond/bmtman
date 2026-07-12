@@ -20,7 +20,7 @@ export type SessionParticipant = {
   id: number;
   session_id: number;
   member_id: number;
-  do_points: number;
+  stake_points: number;
   members: Member | null;
   status?: "fixed" | "former_fixed";
 };
@@ -29,7 +29,8 @@ export type SessionWalkin = {
   id: number;
   session_id: number;
   walkin_number: number;
-  fee_type: "session_fee" | "do_fee";
+  walkin_name: string | null;
+  fee_type: "session_fee" | "stake_fee";
   amount_expected: number;
   is_paid: number;
   amount_collected: number | null;
@@ -66,7 +67,7 @@ export type WalkinReceivable = SessionWalkin & {
   sessions?: { session_date: string } | { session_date: string }[] | null;
 };
 
-export type PaidWalkinByDay = SessionWalkin & {
+export type WalkinByDay = SessionWalkin & {
   sessions?: { session_date: string } | { session_date: string }[] | null;
 };
 
@@ -106,7 +107,7 @@ export type MonthlyMemberCard = {
   name: string;
   status: "fixed" | "former_fixed";
   fixedFee: number;
-  doFee: number;
+  stakeFee: number;
   giaoLuuFee: number;
   otherFee: number;
   totalDue: number;
@@ -123,6 +124,22 @@ export type MonthlyMemberCard = {
     period: string;
   }[];
   chargeCount: number;
+};
+
+export type MemberFeeItem = {
+  name: string;
+  amount: number;
+};
+
+export type MemberFeeSummary = {
+  memberId: number;
+  memberNumber: string;
+  name: string;
+  status: "fixed" | "former_fixed";
+  items: MemberFeeItem[];
+  totalDue: number;
+  totalPaid: number;
+  outstanding: number;
 };
 
 type ActiveMemberRow = {
@@ -157,9 +174,9 @@ type DailyScorecardRow = {
 
 export const chargeTypeLabels: Record<string, string> = {
   monthly_fixed_fee: "Quỹ cố định tháng",
-  monthly_do_fee: "Tiền độ tháng",
+  monthly_stake_fee: "Tiền độ tháng",
   session_giaoluu_fee: "Phí giao lưu buổi",
-  session_do_fee: "Tiền độ buổi",
+  session_stake_fee: "Tiền độ buổi",
   tournament_fee: "Phí giải",
   other: "Khác",
 };
@@ -351,7 +368,7 @@ export async function getSessionByDate(date: string) {
 
 export async function getSessionParticipants(sessionId: number, date: string) {
   const { data, error } = await getSupabaseAdmin()
-    .from("session_do_points")
+    .from("session_stake_points")
     .select("*,members(member_id,name,joined_date,note)")
     .eq("session_id", sessionId)
     .order("id", { ascending: true });
@@ -421,19 +438,18 @@ export async function getWalkinReceivables() {
   return (data || []) as WalkinReceivable[];
 }
 
-export async function getPaidWalkinsByMonth(month: string) {
+export async function getWalkinsByMonth(month: string) {
   if (!hasServerSupabaseConfig) return [];
   const { data, error } = await getSupabaseAdmin()
     .from("session_walkins")
     .select("*,sessions!inner(session_date)")
-    .eq("is_paid", 1)
     .gte("sessions.session_date", `${month}-01`)
     .lt("sessions.session_date", nextMonth(month))
     .order("session_date", { referencedTable: "sessions", ascending: false })
     .order("walkin_number", { ascending: true })
     .order("fee_type", { ascending: false });
   if (error) throw error;
-  return (data || []) as PaidWalkinByDay[];
+  return (data || []) as WalkinByDay[];
 }
 
 export async function getCharges() {
@@ -565,7 +581,7 @@ export async function getMonthlyMemberCards(month: string) {
       name: row.member.name,
       status: row.status,
       fixedFee: row.status === "fixed" ? fixedBaseFee : 0,
-      doFee: 0,
+      stakeFee: 0,
       giaoLuuFee: 0,
       otherFee: 0,
       totalDue: row.status === "fixed" ? fixedBaseFee : 0,
@@ -608,10 +624,10 @@ export async function getMonthlyMemberCards(month: string) {
     if (charge.charge_type === "monthly_fixed_fee") {
       card.fixedFee = amount;
     } else if (
-      charge.charge_type === "monthly_do_fee" ||
-      charge.charge_type === "session_do_fee"
+      charge.charge_type === "monthly_stake_fee" ||
+      charge.charge_type === "session_stake_fee"
     ) {
-      card.doFee += amount;
+      card.stakeFee += amount;
     } else if (charge.charge_type === "session_giaoluu_fee") {
       card.giaoLuuFee += amount;
     } else {
@@ -634,7 +650,7 @@ export async function getMonthlyMemberCards(month: string) {
   }
 
   for (const card of cards.values()) {
-    card.totalDue = card.fixedFee + card.doFee + card.giaoLuuFee + card.otherFee;
+    card.totalDue = card.fixedFee + card.stakeFee + card.giaoLuuFee + card.otherFee;
     card.outstanding = card.previousDebt + Math.max(card.totalDue - card.totalPaid, 0);
   }
 
@@ -645,9 +661,66 @@ export async function getMonthlyMemberCards(month: string) {
   });
 }
 
+export async function getMemberFeeSummaries(month: string) {
+  const cards = await getMonthlyMemberCards(month);
+  if (!hasServerSupabaseConfig) return cards.map(memberCardToFeeSummary);
+
+  const { data: savedRows, error: savedError } = await getSupabaseAdmin()
+    .from("member_fee_summaries")
+    .select("member_id,member_status,items,total_due,total_paid,outstanding,members(name)")
+    .eq("period_month", month);
+
+  if (!savedError && savedRows && savedRows.length > 0) {
+    return savedRows.map((row) => {
+      const member = Array.isArray(row.members) ? row.members[0] : row.members;
+      const items = Array.isArray(row.items)
+        ? row.items.filter(
+            (item): item is MemberFeeItem =>
+              typeof item === "object" &&
+              item !== null &&
+              typeof (item as MemberFeeItem).name === "string" &&
+              Number.isFinite(Number((item as MemberFeeItem).amount))
+          ).map((item) => ({ name: item.name, amount: Number(item.amount) }))
+        : [];
+
+      return {
+        memberId: row.member_id,
+        memberNumber: String(row.member_id).padStart(2, "0"),
+        name: member?.name || `Thanh vien ${row.member_id}`,
+        status: row.member_status as "fixed" | "former_fixed",
+        items,
+        totalDue: row.total_due || 0,
+        totalPaid: row.total_paid || 0,
+        outstanding: row.outstanding || 0,
+      };
+    });
+  }
+
+  return cards.map(memberCardToFeeSummary);
+}
+
+function memberCardToFeeSummary(card: MonthlyMemberCard): MemberFeeSummary {
+  const items: MemberFeeItem[] = [];
+  if (card.fixedFee > 0) items.push({ name: "Tien quy", amount: card.fixedFee });
+  if (card.stakeFee > 0) items.push({ name: "Tien do", amount: card.stakeFee });
+  if (card.giaoLuuFee > 0) items.push({ name: "Phi giao luu", amount: card.giaoLuuFee });
+  if (card.otherFee > 0) items.push({ name: "Khoan khac", amount: card.otherFee });
+  if (card.previousDebt > 0) items.push({ name: "No ton thang truoc", amount: card.previousDebt });
+  return {
+    memberId: card.memberId,
+    memberNumber: card.memberNumber,
+    name: card.name,
+    status: card.status,
+    items,
+    totalDue: items.reduce((sum, item) => sum + item.amount, 0),
+    totalPaid: card.totalPaid,
+    outstanding: card.outstanding,
+  };
+}
+
 export async function getFeeAmount(
   status: "fixed" | "former_fixed" | "walkin",
-  component: "base_fee" | "do_fee",
+  component: "base_fee" | "stake_fee",
   date: string
 ) {
   if (!hasServerSupabaseConfig) return 0;

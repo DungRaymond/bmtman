@@ -1,16 +1,15 @@
 import {
-  createManualChargeAction,
   createWalkinReceivableAction,
   deleteChargeAction,
   deleteWalkinReceivableAction,
   recordPaymentAction,
   recordWalkinPaymentAction,
 } from "@/app/actions";
+import { ManualChargeForm } from "@/app/thu/ManualChargeForm";
 import { AdminPinField } from "@/app/components/AdminPinField";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import {
   chargeTypeLabels,
-  currentMonthValue,
   formatDateVN,
   getCharges,
   getMemberBalances,
@@ -28,7 +27,7 @@ export const dynamic = "force-dynamic";
 
 const walkinTypeLabels: Record<string, string> = {
   session_fee: "Vang lai theo buoi",
-  do_fee: "Tien do vang lai",
+  stake_fee: "Tien do vang lai",
 };
 
 export default async function ThuPage() {
@@ -90,6 +89,16 @@ export default async function ThuPage() {
             />
           </div>
           <div>
+            <label>Ten thanh vien vang lai</label>
+            <input
+              name="walkin_name"
+              type="text"
+              maxLength={80}
+              placeholder="Nhap ten nguoi choi"
+              required
+            />
+          </div>
+          <div>
             <label>Muc thu</label>
             <input value="80.000d / buoi" readOnly />
           </div>
@@ -102,49 +111,15 @@ export default async function ThuPage() {
 
       <section className="card">
         <div className="section-title">Tao khoan phai thu thu cong</div>
-        <form className="grid3" action={createManualChargeAction}>
-          <div>
-            <label>Thanh vien</label>
-            <select name="member_id" required>
-              <option value="">Chon nguoi</option>
-              {members.map((member) => (
-                <option key={member.member_id} value={member.member_id}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Loai khoan thu</label>
-            <select name="charge_type" required>
-              {Object.entries(chargeTypeLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>So tien</label>
-            <input name="amount" type="number" min="1" required />
-          </div>
-          <div>
-            <label>Thang ap dung</label>
-            <input name="period_month" type="month" defaultValue={currentMonthValue()} />
-          </div>
-          <div>
-            <label>Ten su kien</label>
-            <input name="event_name" placeholder="VD: Giai noi bo" />
-          </div>
-          <div>
-            <label>Ghi chu</label>
-            <input name="note" />
-          </div>
-          <AdminPinField />
-          <button className="btn-primary" type="submit">
-            Tao khoan thu
-          </button>
-        </form>
+        <ManualChargeForm
+          members={members}
+          chargeTypes={Object.entries(chargeTypeLabels).map(([value, label]) => ({
+            value,
+            label,
+          }))}
+          initialDate={todayInputValue()}
+          adminPinField={<AdminPinField />}
+        />
       </section>
 
       <section className="card">
@@ -163,9 +138,11 @@ export default async function ThuPage() {
               >
                 <input type="hidden" name="id" value={walkin.id} />
                 <div>
-                  <strong>Vang lai #{walkin.walkin_number}</strong>
+                  <strong>
+                    {walkin.walkin_name || `Vang lai #${walkin.walkin_number}`}
+                  </strong>
                   <div className="muted">
-                    {walkinTypeLabels[walkin.fee_type] || walkin.fee_type}
+                    Vang lai #{walkin.walkin_number} - {walkinTypeLabels[walkin.fee_type] || walkin.fee_type}
                     {sessionDate ? ` - ${formatDateVN(sessionDate)}` : ""}
                   </div>
                   <div className="muted">Phai thu {money(walkin.amount_expected)}</div>

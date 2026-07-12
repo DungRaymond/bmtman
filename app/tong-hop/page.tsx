@@ -9,13 +9,12 @@ import {
   formatDateVN,
   getFeeAmount,
   getMonthSummary,
-  getMonthlyMemberCards,
-  getPaidWalkinsByMonth,
+  getWalkinsByMonth,
   money,
   walkinSessionDate,
-  type MonthlyMemberCard,
-  type PaidWalkinByDay,
+  type WalkinByDay,
 } from "@/lib/finance";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -23,127 +22,12 @@ type PageProps = {
   searchParams?: Promise<{ month?: string }>;
 };
 
-function monthLabel(month: string) {
-  const [, rawMonth] = month.split("-");
-  return `T${Number(rawMonth)}/${month.slice(0, 4)}`;
-}
-
-function CardLine({
-  label,
-  helper,
-  value,
-}: {
-  label: string;
-  helper: string;
-  value: string;
-}) {
-  return (
-    <div className="collection-card-line">
-      <div>
-        <span>{label}</span>
-        <small>{helper}</small>
-      </div>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function MemberCollectionCard({
-  card,
-  month,
-}: {
-  card: MonthlyMemberCard;
-  month: string;
-}) {
-  const isFixed = card.status === "fixed";
-  const statusText =
-    card.totalDue === 0 && card.previousDebt === 0
-      ? "Chua phat sinh"
-      : card.outstanding === 0
-        ? "Da thu du"
-        : `Con no ${money(card.outstanding)}`;
-
-  return (
-    <article className="collection-card">
-      <div className="collection-card-kicker">Quy nhom cau long - {monthLabel(month)}</div>
-      <div className="collection-card-head">
-        <div>
-          <h2>{card.name}</h2>
-          <p>Thanh vien #{card.memberNumber}</p>
-        </div>
-        <span>{isFixed ? "Co dinh" : "Co dinh cu"}</span>
-      </div>
-
-      <div className="collection-card-body">
-        <CardLine
-          label="Phi co dinh hang thang"
-          helper={isFixed ? "Ap dung cho thanh vien co dinh" : "Khong ap dung"}
-          value={isFixed ? money(card.fixedFee) : "-"}
-        />
-        <CardLine
-          label="Tien do"
-          helper={
-            card.doFee > 0
-              ? "Tong do phat sinh trong thang"
-              : "Chua co do trong thang"
-          }
-          value={card.doFee > 0 ? money(card.doFee) : "-"}
-        />
-        <CardLine
-          label="Phi giao luu ngoai lich"
-          helper={
-            isFixed
-              ? "Khong ap dung cho thanh vien co dinh"
-              : "Tinh theo tung buoi giao luu"
-          }
-          value={card.giaoLuuFee > 0 ? money(card.giaoLuuFee) : "-"}
-        />
-        {card.otherFee > 0 && (
-          <CardLine
-            label="Khoan khac"
-            helper="Giai, ao, hoac khoan phat sinh rieng"
-            value={money(card.otherFee)}
-          />
-        )}
-        {card.previousDebt > 0 && (
-          <CardLine
-            label="No ton tu thang truoc"
-            helper="Khoan cu chua thanh toan"
-            value={money(card.previousDebt)}
-          />
-        )}
-      </div>
-
-      {card.unpaidItems.length > 0 && (
-        <div className="collection-card-unpaid">
-          <div>
-            <span>Cho thanh toan</span>
-            <small>{card.unpaidItems.length} khoan</small>
-          </div>
-          <strong>{money(card.outstanding)}</strong>
-        </div>
-      )}
-
-      <div className="collection-card-total">
-        <span>Tong phai thu</span>
-        <strong>{money(card.totalDue + card.previousDebt)}</strong>
-      </div>
-      <div className="collection-card-status">
-        <span>Trang thai</span>
-        <strong className={card.outstanding === 0 ? "paid" : "unpaid"}>
-          {statusText}
-        </strong>
-      </div>
-    </article>
-  );
-}
-
-function walkinLabel(row: PaidWalkinByDay) {
+function walkinLabel(row: WalkinByDay) {
   return row.fee_type === "session_fee" ? "Phi vang lai" : "Tien do vang lai";
 }
 
-function groupPaidWalkinsByDate(rows: PaidWalkinByDay[]) {
-  const groups = new Map<string, PaidWalkinByDay[]>();
+function groupWalkinsByDate(rows: WalkinByDay[]) {
+  const groups = new Map<string, WalkinByDay[]>();
   for (const row of rows) {
     const date = walkinSessionDate(row);
     if (!date) continue;
@@ -155,29 +39,16 @@ function groupPaidWalkinsByDate(rows: PaidWalkinByDay[]) {
 export default async function TongHopPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
   const month = params.month || currentMonthValue();
-  const [summary, memberCards, formerFixedFee, walkinFee, paidWalkins] =
+  const [summary, formerFixedFee, walkinFee, walkins] =
     await Promise.all([
       getMonthSummary(month),
-      getMonthlyMemberCards(month),
       getFeeAmount("former_fixed", "base_fee", `${month}-01`),
       getFeeAmount("walkin", "base_fee", `${month}-01`),
-      getPaidWalkinsByMonth(month),
+      getWalkinsByMonth(month),
     ]);
-  const paidWalkinGroups = groupPaidWalkinsByDate(paidWalkins);
-  const fixedCards = memberCards.filter((card) => card.status === "fixed");
-  const formerFixedCards = memberCards.filter(
-    (card) => card.status === "former_fixed"
-  );
+  const walkinGroups = groupWalkinsByDate(walkins);
   const totalDebt = summary.balances.reduce(
     (sum, row) => sum + row.outstanding_debt,
-    0
-  );
-  const fixedDebtTotal = fixedCards.reduce(
-    (sum, card) => sum + card.outstanding,
-    0
-  );
-  const formerFixedDebtTotal = formerFixedCards.reduce(
-    (sum, card) => sum + card.outstanding,
     0
   );
 
@@ -243,48 +114,15 @@ export default async function TongHopPage({ searchParams }: PageProps) {
       </section>
 
       <section className="debt-card-grid">
-        <div className="debt-summary-card">
+        <div className="debt-summary-card memfee-link-card">
           <div>
-            <span>Cong no thanh vien co dinh</span>
-            <strong>{money(fixedDebtTotal)}</strong>
+            <span>The tong ket chi phi thanh vien</span>
+            <strong>Memfee cards</strong>
           </div>
-          <small>{fixedCards.filter((card) => card.outstanding > 0).length} nguoi con no</small>
+          <Link className="btn-primary" href={`/tong-hop/memfee-cards?month=${month}`}>
+            Mo danh sach
+          </Link>
         </div>
-        <div className="debt-summary-card">
-          <div>
-            <span>Cong no co dinh cu</span>
-            <strong>{money(formerFixedDebtTotal)}</strong>
-          </div>
-          <small>
-            {formerFixedCards.filter((card) => card.outstanding > 0).length} nguoi con no
-          </small>
-        </div>
-      </section>
-
-      <section className="collection-section">
-        <div className="section-title">The tong ket thanh vien co dinh</div>
-        {fixedCards.length === 0 ? (
-          <div className="empty">Khong co thanh vien co dinh trong thang nay.</div>
-        ) : (
-          <div className="collection-card-grid">
-            {fixedCards.map((card) => (
-              <MemberCollectionCard key={card.memberId} card={card} month={month} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="collection-section">
-        <div className="section-title">The tong ket co dinh cu</div>
-        {formerFixedCards.length === 0 ? (
-          <div className="empty">Khong co thanh vien co dinh cu trong thang nay.</div>
-        ) : (
-          <div className="collection-card-grid">
-            {formerFixedCards.map((card) => (
-              <MemberCollectionCard key={card.memberId} card={card} month={month} />
-            ))}
-          </div>
-        )}
       </section>
 
       <section className="rate-card-grid">
@@ -301,37 +139,55 @@ export default async function TongHopPage({ searchParams }: PageProps) {
       </section>
 
       <section className="card">
-        <div className="section-title">Vang lai da thu theo ngay</div>
+        <div className="section-title">Thu vang lai theo ngay</div>
         <div className="walkin-day-list">
-          {paidWalkinGroups.length === 0 && (
-            <div className="empty">Chua co khoan vang lai da thu trong thang nay.</div>
+          {walkinGroups.length === 0 && (
+            <div className="empty">Chua co khoan vang lai trong thang nay.</div>
           )}
-          {paidWalkinGroups.map(([date, rows]) => {
-            const dayTotal = rows.reduce(
+          {walkinGroups.map(([date, rows]) => {
+            const collected = rows.reduce(
               (sum, row) => sum + (row.amount_collected || 0),
               0
             );
+            const expected = rows.reduce(
+              (sum, row) => sum + (row.amount_expected || 0),
+              0
+            );
+            const isComplete = collected >= expected;
             return (
-              <div className="walkin-day-card" key={date}>
-                <div className="walkin-day-head">
+              <details className="walkin-day-card" key={date}>
+                <summary className="walkin-day-head">
                   <div>
                     <strong>{formatDateVN(date)}</strong>
-                    <span>{rows.length} khoan da thu</span>
+                    <span>{isComplete ? "Da thu du" : "Con thieu"}</span>
                   </div>
-                  <b>{money(dayTotal)}</b>
-                </div>
+                  <b className={isComplete ? "complete" : "missing"}>
+                    {money(collected)} / {money(expected)} da thu
+                  </b>
+                </summary>
                 <div className="walkin-day-items">
-                  {rows.map((row) => (
+                  {rows.map((row) => {
+                    const rowCollected = row.amount_collected || 0;
+                    const rowExpected = row.amount_expected || 0;
+                    const rowComplete = rowCollected >= rowExpected;
+                    return (
                     <div className="walkin-day-item" key={row.id}>
                       <div>
-                        <strong>Vang lai #{row.walkin_number}</strong>
-                        <span>{walkinLabel(row)}</span>
+                        <strong>
+                          {row.walkin_name || `Vang lai #${row.walkin_number}`}
+                        </strong>
+                        <span>
+                          Vang lai #{row.walkin_number} - {walkinLabel(row)} - {rowComplete ? "Da thu" : "Con thieu"}
+                        </span>
                       </div>
-                      <b>{money(row.amount_collected)}</b>
+                      <b className={rowComplete ? "complete" : "missing"}>
+                        {money(rowCollected)} / {money(rowExpected)}
+                      </b>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
-              </div>
+              </details>
             );
           })}
         </div>

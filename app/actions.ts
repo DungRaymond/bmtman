@@ -7,6 +7,7 @@ import {
   getDailyScorecard,
   getFeeAmount,
   getMemberStatus,
+  getMonthlyMemberCards,
   normalizeScorecardPayload,
   parseScorePlayerKey,
   type DailyScorecardPayload,
@@ -51,7 +52,7 @@ async function ensureSession(date: string) {
 async function upsertSessionCharge(input: {
   memberId: number;
   sessionId: number;
-  chargeType: "session_giaoluu_fee" | "session_do_fee";
+  chargeType: "session_giaoluu_fee" | "session_stake_fee";
   amount: number;
   note?: string;
 }) {
@@ -269,8 +270,8 @@ export async function settleDailyScorecardAction(formData: FormData) {
   }
 
   const session = await ensureSession(date);
-  const memberDo = new Map<number, number>();
-  const walkinDo = new Map<number, number>();
+  const memberStakes = new Map<number, number>();
+  const walkinStakes = new Map<number, number>();
   const presentMemberIds = new Set<number>();
   const presentWalkinNumbers = new Set<number>();
 
@@ -286,10 +287,10 @@ export async function settleDailyScorecardAction(formData: FormData) {
 
     for (const player of losingPlayers(set)) {
       if (player.type === "member" && player.memberId) {
-        addToMap(memberDo, player.memberId, set.amount);
+        addToMap(memberStakes, player.memberId, set.amount);
       }
       if (player.type === "walkin" && player.walkinNumber) {
-        addToMap(walkinDo, player.walkinNumber, set.amount);
+        addToMap(walkinStakes, player.walkinNumber, set.amount);
       }
     }
   }
@@ -300,13 +301,13 @@ export async function settleDailyScorecardAction(formData: FormData) {
   for (const memberId of presentMemberIds) {
     const status = await getMemberStatus(memberId, date);
     if (!status) continue;
-    const doPoints = memberDo.get(memberId) || 0;
+    const stakePoints = memberStakes.get(memberId) || 0;
 
-    const { error } = await supabase.from("session_do_points").upsert(
+    const { error } = await supabase.from("session_stake_points").upsert(
       {
         session_id: session.session_id,
         member_id: memberId,
-        do_points: doPoints,
+        stake_points: stakePoints,
       },
       { onConflict: "session_id,member_id" }
     );
@@ -324,8 +325,8 @@ export async function settleDailyScorecardAction(formData: FormData) {
       await upsertSessionCharge({
         memberId,
         sessionId: session.session_id,
-        chargeType: "session_do_fee",
-        amount: doPoints,
+        chargeType: "session_stake_fee",
+        amount: stakePoints,
         note: "Tu tong hop tu the ghi do ngay",
       });
     }
@@ -347,12 +348,12 @@ export async function settleDailyScorecardAction(formData: FormData) {
     if (error) throw error;
   }
 
-  for (const [walkinNumber, amount] of walkinDo.entries()) {
+  for (const [walkinNumber, amount] of walkinStakes.entries()) {
     const { error } = await supabase.from("session_walkins").upsert(
       {
         session_id: session.session_id,
         walkin_number: walkinNumber,
-        fee_type: "do_fee",
+        fee_type: "stake_fee",
         amount_expected: amount,
         is_paid: 1,
         amount_collected: amount,
@@ -397,16 +398,16 @@ export async function addMemberToSessionAction(formData: FormData) {
   const date = requiredString(formData, "date");
   const session = await ensureSession(date);
   const memberId = intValue(formData, "member_id");
-  const doPoints = intValue(formData, "do_points");
+  const stakePoints = intValue(formData, "stake_points");
   const status = await getMemberStatus(memberId, date);
   if (!status) throw new Error("Member is not active on this date.");
 
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("session_do_points").upsert(
+  const { error } = await supabase.from("session_stake_points").upsert(
     {
       session_id: session.session_id,
       member_id: memberId,
-      do_points: doPoints,
+      stake_points: stakePoints,
     },
     { onConflict: "session_id,member_id" }
   );
@@ -424,8 +425,8 @@ export async function addMemberToSessionAction(formData: FormData) {
     await upsertSessionCharge({
       memberId,
       sessionId: session.session_id,
-      chargeType: "session_do_fee",
-      amount: doPoints,
+      chargeType: "session_stake_fee",
+      amount: stakePoints,
       note: "Tự tạo từ độ buổi",
     });
   }
@@ -434,17 +435,17 @@ export async function addMemberToSessionAction(formData: FormData) {
   redirect(`/?date=${date}`);
 }
 
-export async function updateSessionDoAction(formData: FormData) {
+export async function updateSessionStakeAction(formData: FormData) {
   const date = requiredString(formData, "date");
   const id = intValue(formData, "id");
   const memberId = intValue(formData, "member_id");
   const sessionId = intValue(formData, "session_id");
-  const doPoints = intValue(formData, "do_points");
+  const stakePoints = intValue(formData, "stake_points");
   const status = await getMemberStatus(memberId, date);
 
   const { error } = await getSupabaseAdmin()
-    .from("session_do_points")
-    .update({ do_points: doPoints })
+    .from("session_stake_points")
+    .update({ stake_points: stakePoints })
     .eq("id", id);
   if (error) throw error;
 
@@ -452,8 +453,8 @@ export async function updateSessionDoAction(formData: FormData) {
     await upsertSessionCharge({
       memberId,
       sessionId,
-      chargeType: "session_do_fee",
-      amount: doPoints,
+      chargeType: "session_stake_fee",
+      amount: stakePoints,
       note: "Tự cập nhật từ độ buổi",
     });
   }
@@ -490,13 +491,17 @@ export async function createWalkinReceivableAction(formData: FormData) {
   const date = requiredString(formData, "date");
   const session = await ensureSession(date);
   const walkinNumber = intValue(formData, "walkin_number");
+  const walkinName = requiredString(formData, "walkin_name");
   const amount = await getFeeAmount("walkin", "base_fee", date);
+  if (walkinNumber <= 0) throw new Error("So thu tu vang lai khong hop le.");
+  if (walkinName.length > 80) throw new Error("Ten vang lai khong duoc qua 80 ky tu.");
   if (amount <= 0) throw new Error("Chua cau hinh phi vang lai trong fee_rules.");
 
   const { error } = await getSupabaseAdmin().from("session_walkins").upsert(
     {
       session_id: session.session_id,
       walkin_number: walkinNumber,
+      walkin_name: walkinName,
       fee_type: "session_fee",
       amount_expected: amount,
       is_paid: 0,
@@ -504,7 +509,9 @@ export async function createWalkinReceivableAction(formData: FormData) {
     },
     { onConflict: "session_id,walkin_number,fee_type" }
   );
-  if (error) throw error;
+  if (error) {
+    throw new Error(`Khong tao duoc khoan vang lai (${error.code}): ${error.message}`);
+  }
 
   revalidatePath("/thu");
   revalidatePath("/tong-hop");
@@ -556,7 +563,7 @@ export async function recordWalkinPaymentAction(formData: FormData) {
   redirect("/thu");
 }
 
-export async function addWalkinDoFeeAction(formData: FormData) {
+export async function addWalkinStakeFeeAction(formData: FormData) {
   const date = requiredString(formData, "date");
   const session = await ensureSession(date);
   const walkinNumber = intValue(formData, "walkin_number");
@@ -567,7 +574,7 @@ export async function addWalkinDoFeeAction(formData: FormData) {
     {
       session_id: session.session_id,
       walkin_number: walkinNumber,
-      fee_type: "do_fee",
+      fee_type: "stake_fee",
       amount_expected: amount,
       is_paid: 1,
       amount_collected: amount,
@@ -586,22 +593,31 @@ export async function createManualChargeAction(formData: FormData) {
   const memberId = intValue(formData, "member_id");
   const chargeType = requiredString(formData, "charge_type");
   const amount = intValue(formData, "amount");
-  const periodMonth = String(formData.get("period_month") || "").trim() || null;
-  const eventName = String(formData.get("event_name") || "").trim() || null;
+  const collectionDate = requiredString(formData, "collection_date");
+  const periodMonth =
+    String(formData.get("period_month") || "").trim() || collectionDate.slice(0, 7);
   const note = String(formData.get("note") || "").trim() || null;
+
+  if (memberId <= 0) throw new Error("Thanh vien khong hop le.");
+  if (amount <= 0) throw new Error("So tien phai lon hon 0.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(collectionDate)) throw new Error("Ngay thu khong hop le.");
+  if (!/^\d{4}-\d{2}$/.test(periodMonth)) throw new Error("Thang ap dung khong hop le.");
 
   const { error } = await getSupabaseAdmin().from("charges").insert({
     member_id: memberId,
     charge_type: chargeType,
     amount,
     period_month: periodMonth,
-    event_name: eventName,
+    created_at: collectionDate,
     note,
   });
-  if (error) throw error;
+  if (error) {
+    throw new Error(`Khong tao duoc khoan thu (${error.code}): ${error.message}`);
+  }
 
   revalidatePath("/thu");
-  redirect("/thu");
+  revalidatePath("/tong-hop");
+  redirect(`/thu?month=${periodMonth}`);
 }
 
 export async function recordPaymentAction(formData: FormData) {
@@ -743,4 +759,38 @@ export async function generateMonthlyFixedFeesAction(formData: FormData) {
   revalidatePath("/thu");
   revalidatePath("/tong-hop");
   redirect(`/tong-hop?month=${periodMonth}`);
+}
+
+export async function saveMemberFeeSummariesAction(formData: FormData) {
+  assertAdmin(formData);
+  const periodMonth = requiredString(formData, "period_month");
+  const cards = await getMonthlyMemberCards(periodMonth);
+  const rows = cards.map((card) => {
+    const items: { name: string; amount: number }[] = [];
+    if (card.fixedFee > 0) items.push({ name: "Tien quy", amount: card.fixedFee });
+    if (card.stakeFee > 0) items.push({ name: "Tien do", amount: card.stakeFee });
+    if (card.giaoLuuFee > 0) items.push({ name: "Phi giao luu", amount: card.giaoLuuFee });
+    if (card.otherFee > 0) items.push({ name: "Khoan khac", amount: card.otherFee });
+    if (card.previousDebt > 0) items.push({ name: "No ton thang truoc", amount: card.previousDebt });
+    return {
+      member_id: card.memberId,
+      period_month: periodMonth,
+      member_status: card.status,
+      items,
+      total_due: items.reduce((sum, item) => sum + item.amount, 0),
+      total_paid: card.totalPaid,
+      outstanding: card.outstanding,
+      updated_at: new Date().toISOString(),
+    };
+  });
+
+  if (rows.length > 0) {
+    const { error } = await getSupabaseAdmin()
+      .from("member_fee_summaries")
+      .upsert(rows, { onConflict: "member_id,period_month" });
+    if (error) throw error;
+  }
+
+  revalidatePath("/tong-hop/memfee-cards");
+  redirect(`/tong-hop/memfee-cards?month=${periodMonth}`);
 }
