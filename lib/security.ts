@@ -5,11 +5,11 @@ export function assertAdmin(formData: FormData) {
   const submittedPin = String(formData.get("admin_pin") || "");
 
   if (process.env.NODE_ENV === "production" && !configuredPin) {
-    throw new Error("APP_ADMIN_PIN must be configured before admin writes are enabled.");
+    throw new Error("Phải cấu hình APP_ADMIN_PIN trước khi cho phép thao tác quản trị.");
   }
 
   if (configuredPin && submittedPin !== configuredPin) {
-    throw new Error("Ma quan tri khong dung.");
+    throw new Error("Mã quản trị không đúng.");
   }
 }
 

@@ -21,27 +21,22 @@ function monthLabel(month: string) {
 }
 
 function MemberFeeCard({ card, month }: { card: MemberFeeSummary; month: string }) {
-  const statusText =
-    card.totalDue === 0
-      ? "Chua phat sinh"
-      : card.outstanding === 0
-        ? "Da thu du"
-        : "Cho thanh toan";
+  const statusText = card.outstanding === 0 ? "Done" : "Pending";
 
   return (
     <article className="collection-card">
-      <div className="collection-card-kicker">Quy nhom cau long - {monthLabel(month)}</div>
+      <div className="collection-card-kicker">Quỹ nhóm cầu lông - {monthLabel(month)}</div>
       <div className="collection-card-head">
         <div>
           <h2>{card.name}</h2>
-          <p>Thanh vien #{card.memberNumber}</p>
+          <p>Thành viên #{card.memberNumber}</p>
         </div>
-        <span>{card.status === "fixed" ? "Co dinh" : "Co dinh cu"}</span>
+        <span>{card.status === "fixed" ? "Cố định" : "Cố định cũ"}</span>
       </div>
 
       <div className="collection-card-body">
         {card.items.length === 0 ? (
-          <div className="collection-card-empty">Chua co khoan can thu trong thang.</div>
+          <div className="collection-card-empty">Chưa có khoản cần thu trong tháng.</div>
         ) : (
           card.items.map((item) => (
             <div className="collection-card-line" key={item.name}>
@@ -53,11 +48,11 @@ function MemberFeeCard({ card, month }: { card: MemberFeeSummary; month: string 
       </div>
 
       <div className="collection-card-total">
-        <span>Tong phai thu</span>
+        <span>Tổng phải thu</span>
         <strong>{money(card.totalDue)}</strong>
       </div>
       <div className="collection-card-status">
-        <span>Trang thai</span>
+        <span>Trạng thái</span>
         <strong className={card.outstanding === 0 ? "paid" : "unpaid"}>
           {statusText}
         </strong>
@@ -77,19 +72,19 @@ export default async function MemfeeCardsPage({ searchParams }: PageProps) {
       <section className="page-title">
         <div>
           <h1>Memfee cards</h1>
-          <p>Chi tiet cac khoan can thu cua thanh vien co dinh va co dinh cu.</p>
+          <p>Chi tiết các khoản cần thu của thành viên cố định và cố định cũ.</p>
         </div>
         <div className="memfee-page-actions">
-          <Link className="btn-secondary" href={`/tong-hop?month=${month}`}>Tong hop</Link>
+          <Link className="btn-secondary" href={`/tong-hop?month=${month}`}>Tổng hợp</Link>
           <form className="inline-form" action="/tong-hop/memfee-cards" method="get">
             <input type="month" name="month" defaultValue={month} />
-            <button className="btn-primary" type="submit">Xem thang</button>
+            <button className="btn-primary" type="submit">Xem tháng</button>
           </form>
         </div>
       </section>
 
       {cards.length === 0 ? (
-        <div className="empty">Khong co thanh vien trong thang nay.</div>
+        <div className="empty">Không có thành viên trong tháng này.</div>
       ) : (
         <section className="collection-card-grid">
           {cards.map((card) => (
@@ -100,13 +95,13 @@ export default async function MemfeeCardsPage({ searchParams }: PageProps) {
 
       <section className="card memfee-save-panel">
         <div>
-          <div className="section-title">Cap nhat du lieu the</div>
-          <p className="muted">Tong hop lai cac khoan tu database va luu vao JSON cua thang.</p>
+          <div className="section-title">Cập nhật dữ liệu thẻ</div>
+          <p className="muted">Tổng hợp lại các khoản từ cơ sở dữ liệu và lưu vào JSON của tháng.</p>
         </div>
         <form className="inline-form" action={saveMemberFeeSummariesAction}>
           <input type="hidden" name="period_month" value={month} />
           <AdminPinField />
-          <button className="btn-primary" type="submit">Cap nhat cards</button>
+          <button className="btn-primary" type="submit">Cập nhật thẻ</button>
         </form>
       </section>
     </main>

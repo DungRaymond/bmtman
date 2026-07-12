@@ -29,9 +29,9 @@ export function ManualChargeForm({
   return (
     <form className="grid3" action={createManualChargeAction}>
       <div>
-        <label>Thanh vien nop tien</label>
+        <label>Thành viên nộp tiền</label>
         <select name="member_id" required>
-          <option value="">Chon thanh vien</option>
+          <option value="">Chọn thành viên</option>
           {members.map((member) => (
             <option key={member.member_id} value={member.member_id}>
               {member.name}
@@ -40,7 +40,7 @@ export function ManualChargeForm({
         </select>
       </div>
       <div>
-        <label>Loai khoan thu</label>
+        <label>Loại khoản thu</label>
         <select name="charge_type" required>
           {chargeTypes.map(({ value, label }) => (
             <option key={value} value={value}>{label}</option>
@@ -48,11 +48,11 @@ export function ManualChargeForm({
         </select>
       </div>
       <div>
-        <label>So tien phai nop</label>
+        <label>Số tiền phải nộp</label>
         <input name="amount" type="number" min="1" required />
       </div>
       <div>
-        <label>Ngay thu</label>
+        <label>Ngày thu</label>
         <input
           name="collection_date"
           type="date"
@@ -62,7 +62,7 @@ export function ManualChargeForm({
         />
       </div>
       <div>
-        <label>Thang ap dung</label>
+        <label>Tháng áp dụng</label>
         <input
           name="period_month"
           type="month"
@@ -75,11 +75,11 @@ export function ManualChargeForm({
         />
       </div>
       <div>
-        <label>Ghi chu</label>
+        <label>Ghi chú</label>
         <input name="note" />
       </div>
       {adminPinField}
-      <button className="btn-primary" type="submit">Tao khoan thu</button>
+      <button className="btn-primary" type="submit">Tạo khoản thu</button>
     </form>
   );
 }

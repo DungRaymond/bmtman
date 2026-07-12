@@ -32,7 +32,7 @@ type PlayerOption = {
 
 function playerLabel(player: ScorePlayer, options: PlayerOption[]) {
   const value = scorePlayerKey(player);
-  return options.find((option) => option.value === value)?.label || "Chua chon";
+  return options.find((option) => option.value === value)?.label || "Chưa chọn";
 }
 
 function PlayerSelect({
@@ -61,7 +61,7 @@ function PlayerSelect({
     <label className="score-slot">
       <span>{label}</span>
       <select name={name} defaultValue={scorePlayerKey(player)}>
-        <option value="">Chon nguoi</option>
+        <option value="">Chọn người</option>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -97,38 +97,38 @@ function ScoreSetCard({
             <span>Set #{index + 1}</span>
             <strong>{money(set.amount)}</strong>
           </div>
-          <b>{readOnly ? "Da chot" : "Da khoa"}</b>
+          <b>{readOnly ? "Đã chốt" : "Đã khóa"}</b>
         </div>
         <div className="match-teams">
           <div className={isAWin ? "match-team winner" : "match-team"}>
-            <div className="match-side-title">Ben A</div>
+            <div className="match-side-title">Bên A</div>
             <PlayerSelect
               name="player_0"
-              label="Slot 1"
+              label="Vị trí 1"
               player={set.players[0]}
               options={options}
               locked
             />
             <PlayerSelect
               name="player_1"
-              label="Slot 2"
+              label="Vị trí 2"
               player={set.players[1]}
               options={options}
               locked
             />
           </div>
           <div className={isBWin ? "match-team winner" : "match-team"}>
-            <div className="match-side-title">Ben B</div>
+            <div className="match-side-title">Bên B</div>
             <PlayerSelect
               name="player_2"
-              label="Slot 3"
+              label="Vị trí 3"
               player={set.players[2]}
               options={options}
               locked
             />
             <PlayerSelect
               name="player_3"
-              label="Slot 4"
+              label="Vị trí 4"
               player={set.players[3]}
               options={options}
               locked
@@ -141,7 +141,7 @@ function ScoreSetCard({
             <input type="hidden" name="set_id" value={set.id} />
             <AdminPinField />
             <button className="btn-secondary" type="submit">
-              Mo khoa de sua
+              Mở khóa để sửa
             </button>
           </form>
         )}
@@ -158,64 +158,64 @@ function ScoreSetCard({
         <div>
           <span>Set #{index + 1}</span>
           <label>
-            Tien do
+            Tiền độ
             <input name="amount" type="number" min="0" defaultValue={set.amount} />
           </label>
         </div>
         <button className="btn-secondary small-btn" name="intent" value="save" type="submit">
-          Luu
+          Lưu
         </button>
       </div>
 
       <div className="match-teams">
         <div className={isAWin ? "match-team winner" : "match-team"}>
-          <div className="match-side-title">Ben A</div>
+          <div className="match-side-title">Bên A</div>
           <PlayerSelect
             name="player_0"
-            label="Slot 1"
+            label="Vị trí 1"
             player={set.players[0]}
             options={options}
             locked={false}
           />
           <PlayerSelect
             name="player_1"
-            label="Slot 2"
+            label="Vị trí 2"
             player={set.players[1]}
             options={options}
             locked={false}
           />
           <button className="match-win-button" name="intent" value="winner_a" type="submit">
-            Ben A thang
+            Bên A thắng
           </button>
         </div>
         <div className={isBWin ? "match-team winner" : "match-team"}>
-          <div className="match-side-title">Ben B</div>
+          <div className="match-side-title">Bên B</div>
           <PlayerSelect
             name="player_2"
-            label="Slot 3"
+            label="Vị trí 3"
             player={set.players[2]}
             options={options}
             locked={false}
           />
           <PlayerSelect
             name="player_3"
-            label="Slot 4"
+            label="Vị trí 4"
             player={set.players[3]}
             options={options}
             locked={false}
           />
           <button className="match-win-button" name="intent" value="winner_b" type="submit">
-            Ben B thang
+            Bên B thắng
           </button>
         </div>
       </div>
 
       <div className="match-card-actions">
         <button className="match-lock-button" name="intent" value="lock" type="submit">
-          Khoa the
+          Khóa thẻ
         </button>
         <button className="btn-secondary" formAction={deleteScoreSetAction} type="submit">
-          Xoa the
+          Xóa thẻ
         </button>
       </div>
     </form>
@@ -236,11 +236,11 @@ export default async function Home({ searchParams }: PageProps) {
   const options: PlayerOption[] = [
     ...activeMembers.map((row) => ({
       value: `member:${row.member_id}`,
-      label: `${row.member.name} (${row.status === "fixed" ? "co dinh" : "co dinh cu"})`,
+      label: `${row.member.name} (${row.status === "fixed" ? "cố định" : "cố định cũ"})`,
     })),
     ...Array.from({ length: 12 }, (_, index) => ({
       value: `walkin:${index + 1}`,
-      label: `Vang lai ${index + 1}`,
+      label: `Vãng lai ${index + 1}`,
     })),
   ];
 
@@ -250,14 +250,14 @@ export default async function Home({ searchParams }: PageProps) {
 
       <section className="scoreboard-head">
         <div>
-          <span>Ghi do</span>
+          <span>Ghi độ</span>
           <h1>{formatDateVN(date)}</h1>
-          <p>{sets.length} the trong ngay</p>
+          <p>{sets.length} thẻ trong ngày</p>
         </div>
         <form className="score-date-form" action="/" method="get">
           <input type="date" name="date" defaultValue={date} />
           <button className="btn-secondary" type="submit">
-            Xem ngay
+            Xem ngày
           </button>
         </form>
       </section>
@@ -266,19 +266,19 @@ export default async function Home({ searchParams }: PageProps) {
         <form action={addScoreSetAction}>
           <input type="hidden" name="date" value={date} />
           <button className="btn-primary" type="submit" disabled={sets.length >= 12 || isSettled}>
-            Them the ghi do
+            Thêm thẻ ghi độ
           </button>
         </form>
         <div>
           <strong>{sets.filter((set) => set.locked).length}/{sets.length}</strong>
-          <span>{isSettled ? "ngay da chot" : "the da khoa"}</span>
+          <span>{isSettled ? "ngày đã chốt" : "thẻ đã khóa"}</span>
         </div>
       </section>
 
       <section className="match-card-grid">
         {sets.length === 0 && (
           <div className="empty match-empty">
-            Chua co the ghi do cho ngay nay. Bam them the de bat dau.
+            Chưa có thẻ ghi độ cho ngày này. Bấm thêm thẻ để bắt đầu.
           </div>
         )}
         {sets.map((set, index) => (
@@ -295,10 +295,10 @@ export default async function Home({ searchParams }: PageProps) {
 
       <section className="score-settle-card">
         <div>
-          <span>Chot so do</span>
+          <span>Chốt sổ độ</span>
           <strong>
             {isSettled
-              ? "Da chot"
+              ? "Đã chốt"
               : canSettle
                 ? "San sang chot"
                 : "Can khoa toan bo the"}
@@ -308,7 +308,7 @@ export default async function Home({ searchParams }: PageProps) {
           <input type="hidden" name="date" value={date} />
           <AdminPinField />
           <button className="btn-primary" type="submit" disabled={!canSettle}>
-            Chot so do cua ngay
+            Chốt sổ độ của ngày
           </button>
         </form>
       </section>

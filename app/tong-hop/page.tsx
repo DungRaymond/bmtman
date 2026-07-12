@@ -23,7 +23,7 @@ type PageProps = {
 };
 
 function walkinLabel(row: WalkinByDay) {
-  return row.fee_type === "session_fee" ? "Phi vang lai" : "Tien do vang lai";
+  return row.fee_type === "session_fee" ? "Phí vãng lai" : "Tiền độ vãng lai";
 }
 
 function groupWalkinsByDate(rows: WalkinByDay[]) {
@@ -58,91 +58,91 @@ export default async function TongHopPage({ searchParams }: PageProps) {
 
       <section className="page-title">
         <div>
-          <h1>Tong hop</h1>
-          <p>Chot quy thang, xem thu chi va cong no con lai.</p>
+          <h1>Tổng hợp</h1>
+          <p>Chốt quỹ tháng, xem thu chi và công nợ còn lại.</p>
         </div>
         <form className="inline-form" action="/tong-hop" method="get">
           <input type="month" name="month" defaultValue={month} />
           <button className="btn-secondary" type="submit">
-            Xem thang
+            Xem tháng
           </button>
         </form>
       </section>
 
       <section className="summary-grid">
         <div className="metric">
-          <span>Ton dau thang</span>
+          <span>Tồn đầu tháng</span>
           <strong>{money(summary.openingBalance)}</strong>
         </div>
         <div className="metric">
-          <span>Thu thanh vien</span>
+          <span>Thu thành viên</span>
           <strong>{money(summary.paymentsTotal)}</strong>
         </div>
         <div className="metric">
-          <span>Thu vang lai</span>
+          <span>Thu vãng lai</span>
           <strong>{money(summary.walkinsTotal)}</strong>
         </div>
         <div className="metric">
-          <span>Tong chi</span>
+          <span>Tổng chi</span>
           <strong>{money(summary.expensesTotal)}</strong>
         </div>
         <div className="metric highlight">
-          <span>Uoc tinh ton cuoi</span>
+          <span>Ước tính tồn cuối</span>
           <strong>{money(summary.closingEstimate)}</strong>
         </div>
         <div className="metric danger">
-          <span>Cong no con lai</span>
+          <span>Công nợ còn lại</span>
           <strong>{money(totalDebt)}</strong>
         </div>
       </section>
 
       <section className="card">
-        <div className="section-title">Tao phi co dinh thang</div>
+        <div className="section-title">Tạo phí cố định tháng</div>
         <form className="grid3" action={generateMonthlyFixedFeesAction}>
           <div>
-            <label>Thang</label>
+            <label>Tháng</label>
             <input name="period_month" type="month" defaultValue={month} required />
           </div>
           <AdminPinField />
           <button className="btn-primary" type="submit">
-            Tao phi 500k cho thanh vien co dinh
+            Tạo phí 500k cho thành viên cố định
           </button>
         </form>
         <p className="muted" style={{ marginTop: 10 }}>
-          Co the bam lai ma khong tao trung khoan da co.
+          Có thể bấm lại mà không tạo trùng khoản đã có.
         </p>
       </section>
 
       <section className="debt-card-grid">
         <div className="debt-summary-card memfee-link-card">
           <div>
-            <span>The tong ket chi phi thanh vien</span>
+            <span>Thẻ tổng kết chi phí thành viên</span>
             <strong>Memfee cards</strong>
           </div>
           <Link className="btn-primary" href={`/tong-hop/memfee-cards?month=${month}`}>
-            Mo danh sach
+            Mở danh sách
           </Link>
         </div>
       </section>
 
       <section className="rate-card-grid">
         <div className="rate-card">
-          <span>Tung co dinh, gio giao luu</span>
+          <span>Từng cố định, giờ giao lưu</span>
           <strong>{money(formerFixedFee)}</strong>
-          <small>/buoi</small>
+          <small>/buổi</small>
         </div>
         <div className="rate-card accent">
-          <span>Giao luu le, chua tung co dinh</span>
+          <span>Giao lưu lẻ, chưa từng cố định</span>
           <strong>{money(walkinFee)}</strong>
-          <small>/buoi</small>
+          <small>/buổi</small>
         </div>
       </section>
 
       <section className="card">
-        <div className="section-title">Thu vang lai theo ngay</div>
+        <div className="section-title">Thu vãng lai theo ngày</div>
         <div className="walkin-day-list">
           {walkinGroups.length === 0 && (
-            <div className="empty">Chua co khoan vang lai trong thang nay.</div>
+            <div className="empty">Chưa có khoản vãng lai trong tháng này.</div>
           )}
           {walkinGroups.map(([date, rows]) => {
             const collected = rows.reduce(
@@ -159,10 +159,10 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                 <summary className="walkin-day-head">
                   <div>
                     <strong>{formatDateVN(date)}</strong>
-                    <span>{isComplete ? "Da thu du" : "Con thieu"}</span>
+                    <span>{isComplete ? "Đã thu đủ" : "Còn thiếu"}</span>
                   </div>
                   <b className={isComplete ? "complete" : "missing"}>
-                    {money(collected)} / {money(expected)} da thu
+                    {money(collected)} / {money(expected)} đã thu
                   </b>
                 </summary>
                 <div className="walkin-day-items">
@@ -174,10 +174,10 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                     <div className="walkin-day-item" key={row.id}>
                       <div>
                         <strong>
-                          {row.walkin_name || `Vang lai #${row.walkin_number}`}
+                          {row.walkin_name || `Vãng lai #${row.walkin_number}`}
                         </strong>
                         <span>
-                          Vang lai #{row.walkin_number} - {walkinLabel(row)} - {rowComplete ? "Da thu" : "Con thieu"}
+                          Vãng lai #{row.walkin_number} - {walkinLabel(row)} - {rowComplete ? "Đã thu" : "Còn thiếu"}
                         </span>
                       </div>
                       <b className={rowComplete ? "complete" : "missing"}>
@@ -194,14 +194,14 @@ export default async function TongHopPage({ searchParams }: PageProps) {
       </section>
 
       <section className="card">
-        <div className="section-title">Chot so du thang</div>
+        <div className="section-title">Chốt số dư tháng</div>
         <form className="grid3" action={createMonthlySnapshotAction}>
           <div>
-            <label>Thang</label>
+            <label>Tháng</label>
             <input name="period_month" type="month" defaultValue={month} required />
           </div>
           <div>
-            <label>Ton dau thang</label>
+            <label>Tồn đầu tháng</label>
             <input
               name="opening_balance"
               type="number"
@@ -210,22 +210,22 @@ export default async function TongHopPage({ searchParams }: PageProps) {
             />
           </div>
           <div>
-            <label>Ton cuoi da chot</label>
+            <label>Tồn cuối đã chốt</label>
             <input name="closing_balance" type="number" />
           </div>
           <div className="span-2">
-            <label>Ghi chu</label>
+            <label>Ghi chú</label>
             <input name="note" />
           </div>
           <AdminPinField />
           <button className="btn-primary" type="submit">
-            Luu snapshot
+            Lưu bản chốt
           </button>
         </form>
       </section>
 
       <section className="card">
-        <div className="section-title">Top cong no</div>
+        <div className="section-title">Công nợ cao nhất</div>
         <div className="table-list">
           {summary.balances
             .filter((row) => row.outstanding_debt > 0)
@@ -235,7 +235,7 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                 <div>
                   <strong>{row.name}</strong>
                   <div className="muted">
-                    Da thu {money(row.total_paid)} / phai thu{" "}
+                    Đã thu {money(row.total_paid)} / phải thu{" "}
                     {money(row.total_charged)}
                   </div>
                 </div>
@@ -243,7 +243,7 @@ export default async function TongHopPage({ searchParams }: PageProps) {
               </div>
             ))}
           {summary.balances.every((row) => row.outstanding_debt <= 0) && (
-            <div className="empty">Khong con cong no.</div>
+            <div className="empty">Không còn công nợ.</div>
           )}
         </div>
       </section>

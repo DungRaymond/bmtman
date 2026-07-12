@@ -418,7 +418,7 @@ code {
 }
 
 .collection-card-status strong.unpaid {
-  color: #fcd34d;
+  color: #fca5a5;
 }
 
 .rate-card-grid {
@@ -547,6 +547,77 @@ code {
 
 .walkin-day-item strong {
   color: #e2e8f0;
+}
+
+.received-member-list {
+  display: grid;
+  gap: 10px;
+}
+
+.received-member-card {
+  background: #0f172a;
+  border: 1px solid #273449;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.received-member-summary {
+  background: #142133;
+  padding: 13px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.received-member-summary::-webkit-details-marker {
+  display: none;
+}
+
+.received-member-summary::before {
+  content: "+";
+  color: #94a3b8;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.received-member-card[open] .received-member-summary::before {
+  content: "-";
+}
+
+.received-member-summary strong,
+.received-payment-row strong {
+  color: #e2e8f0;
+  display: block;
+}
+
+.received-member-summary span,
+.received-payment-row span {
+  color: #94a3b8;
+  display: block;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.received-member-summary b,
+.received-payment-row b {
+  color: #4ade80;
+  white-space: nowrap;
+}
+
+.received-payment-list {
+  display: grid;
+}
+
+.received-payment-row {
+  padding: 11px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #1f2d42;
 }
 
 .score-hero {
@@ -996,9 +1067,48 @@ button {
   grid-column: span 2;
 }
 
+.amount-stepper {
+  height: 42px;
+  display: grid;
+  grid-template-columns: 42px minmax(110px, 1fr) 42px;
+  align-items: stretch;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.amount-stepper button {
+  border: 0;
+  border-radius: 0;
+  background: #243247;
+  color: #f8fafc;
+  font-size: 22px;
+  font-weight: 800;
+  padding: 0;
+}
+
+.amount-stepper button:hover {
+  background: #334155;
+}
+
+.amount-stepper output {
+  display: grid;
+  place-items: center;
+  color: #f8fafc;
+  font-weight: 800;
+  border-inline: 1px solid #475569;
+}
+
 .compact-form {
   margin-top: 14px;
   padding-top: 14px;
+  border-top: 1px solid #334155;
+}
+
+.form-section-divider {
+  margin-top: 20px;
+  padding-top: 18px;
   border-top: 1px solid #334155;
 }
 

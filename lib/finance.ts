@@ -85,6 +85,29 @@ export type Charge = {
   payments?: { amount_paid: number }[];
 };
 
+export type MonthlyMemberPayment = {
+  payment_id: number;
+  amount_paid: number;
+  paid_date: string;
+  payment_method: string | null;
+  note: string | null;
+  charges:
+    | {
+        charge_id: number;
+        charge_type: string;
+        amount: number;
+        period_month: string | null;
+        members: Member | Member[] | null;
+      }
+    | {
+        charge_id: number;
+        charge_type: string;
+        amount: number;
+        period_month: string | null;
+        members: Member | Member[] | null;
+      }[];
+};
+
 export type Expense = {
   expense_id: number;
   expense_date: string;
@@ -463,6 +486,21 @@ export async function getCharges() {
   return (data || []) as Charge[];
 }
 
+export async function getMemberPaymentsByMonth(month: string) {
+  if (!hasServerSupabaseConfig) return [] as MonthlyMemberPayment[];
+  const { data, error } = await getSupabaseAdmin()
+    .from("payments")
+    .select(
+      "payment_id,amount_paid,paid_date,payment_method,note,charges!inner(charge_id,charge_type,amount,period_month,members!inner(member_id,name,joined_date,note))"
+    )
+    .gte("paid_date", `${month}-01`)
+    .lt("paid_date", nextMonth(month))
+    .order("paid_date", { ascending: false })
+    .order("payment_id", { ascending: false });
+  if (error) throw error;
+  return (data || []) as MonthlyMemberPayment[];
+}
+
 export async function getMemberBalances() {
   if (!hasServerSupabaseConfig) return [];
   const { data, error } = await getSupabaseAdmin()
@@ -680,13 +718,16 @@ export async function getMemberFeeSummaries(month: string) {
               item !== null &&
               typeof (item as MemberFeeItem).name === "string" &&
               Number.isFinite(Number((item as MemberFeeItem).amount))
-          ).map((item) => ({ name: item.name, amount: Number(item.amount) }))
+          ).map((item) => ({
+            name: memberFeeItemName(item.name),
+            amount: Number(item.amount),
+          }))
         : [];
 
       return {
         memberId: row.member_id,
         memberNumber: String(row.member_id).padStart(2, "0"),
-        name: member?.name || `Thanh vien ${row.member_id}`,
+        name: member?.name || `Thành viên ${row.member_id}`,
         status: row.member_status as "fixed" | "former_fixed",
         items,
         totalDue: row.total_due || 0,
@@ -701,11 +742,11 @@ export async function getMemberFeeSummaries(month: string) {
 
 function memberCardToFeeSummary(card: MonthlyMemberCard): MemberFeeSummary {
   const items: MemberFeeItem[] = [];
-  if (card.fixedFee > 0) items.push({ name: "Tien quy", amount: card.fixedFee });
-  if (card.stakeFee > 0) items.push({ name: "Tien do", amount: card.stakeFee });
-  if (card.giaoLuuFee > 0) items.push({ name: "Phi giao luu", amount: card.giaoLuuFee });
-  if (card.otherFee > 0) items.push({ name: "Khoan khac", amount: card.otherFee });
-  if (card.previousDebt > 0) items.push({ name: "No ton thang truoc", amount: card.previousDebt });
+  if (card.fixedFee > 0) items.push({ name: "Tiền quỹ", amount: card.fixedFee });
+  if (card.stakeFee > 0) items.push({ name: "Tiền độ", amount: card.stakeFee });
+  if (card.giaoLuuFee > 0) items.push({ name: "Phí giao lưu", amount: card.giaoLuuFee });
+  if (card.otherFee > 0) items.push({ name: "Khoản khác", amount: card.otherFee });
+  if (card.previousDebt > 0) items.push({ name: "Nợ tồn tháng trước", amount: card.previousDebt });
   return {
     memberId: card.memberId,
     memberNumber: card.memberNumber,
@@ -716,6 +757,17 @@ function memberCardToFeeSummary(card: MonthlyMemberCard): MemberFeeSummary {
     totalPaid: card.totalPaid,
     outstanding: card.outstanding,
   };
+}
+
+function memberFeeItemName(name: string) {
+  const labels: Record<string, string> = {
+    "Tien quy": "Tiền quỹ",
+    "Tien do": "Tiền độ",
+    "Phi giao luu": "Phí giao lưu",
+    "Khoan khac": "Khoản khác",
+    "No ton thang truoc": "Nợ tồn tháng trước",
+  };
+  return labels[name] || name;
 }
 
 export async function getFeeAmount(

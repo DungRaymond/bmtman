@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Ghi điểm cầu lông",
-  description: "Web ghi điểm cầu lông 2v2 cho team",
+  description: "Ứng dụng ghi độ và quản lý quỹ nhóm cầu lông",
   icons: {
     icon: "/logo.svg",
   },
