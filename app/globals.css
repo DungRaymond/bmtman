@@ -149,6 +149,50 @@ code {
   color: #fca5a5;
 }
 
+.summary-money-accordion {
+  padding: 0;
+  overflow: hidden;
+}
+
+.summary-money-accordion > summary {
+  min-height: 76px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.summary-money-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary-money-accordion > summary::after {
+  content: "+";
+  color: #94a3b8;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.summary-money-accordion[open] > summary::after {
+  content: "-";
+}
+
+.summary-money-details {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+  border-top: 1px solid #334155;
+  padding-top: 10px;
+}
+
+.summary-money-details .walkin-day-head span,
+.summary-money-details .walkin-day-item span {
+  margin-bottom: 0;
+}
+
 .debt-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -403,6 +447,10 @@ code {
 .collection-card-total strong {
   color: #f5c842;
   font-size: 22px;
+}
+
+.collection-card-paid-total strong {
+  color: #86efac;
 }
 
 .collection-card-status {

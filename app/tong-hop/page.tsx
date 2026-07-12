@@ -6,13 +6,16 @@ import { AdminPinField } from "@/app/components/AdminPinField";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import {
   currentMonthValue,
+  chargeTypeLabels,
   formatDateVN,
   getFeeAmount,
   getMonthSummary,
+  getMemberPaymentsByMonth,
   getWalkinsByMonth,
   money,
   walkinSessionDate,
   type WalkinByDay,
+  type MonthlyMemberPayment,
 } from "@/lib/finance";
 import Link from "next/link";
 
@@ -36,17 +39,37 @@ function groupWalkinsByDate(rows: WalkinByDay[]) {
   return Array.from(groups.entries()).sort(([a], [b]) => b.localeCompare(a));
 }
 
+function paymentCharge(payment: MonthlyMemberPayment) {
+  return Array.isArray(payment.charges) ? payment.charges[0] : payment.charges;
+}
+
+function paymentMember(payment: MonthlyMemberPayment) {
+  const charge = paymentCharge(payment);
+  if (!charge) return null;
+  return Array.isArray(charge.members) ? charge.members[0] : charge.members;
+}
+
+function groupMemberPaymentsByDate(rows: MonthlyMemberPayment[]) {
+  const groups = new Map<string, MonthlyMemberPayment[]>();
+  for (const row of rows) {
+    groups.set(row.paid_date, [...(groups.get(row.paid_date) || []), row]);
+  }
+  return Array.from(groups.entries()).sort(([a], [b]) => b.localeCompare(a));
+}
+
 export default async function TongHopPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
   const month = params.month || currentMonthValue();
-  const [summary, formerFixedFee, walkinFee, walkins] =
+  const [summary, formerFixedFee, walkinFee, walkins, memberPayments] =
     await Promise.all([
       getMonthSummary(month),
       getFeeAmount("former_fixed", "base_fee", `${month}-01`),
       getFeeAmount("walkin", "base_fee", `${month}-01`),
       getWalkinsByMonth(month),
+      getMemberPaymentsByMonth(month),
     ]);
   const walkinGroups = groupWalkinsByDate(walkins);
+  const memberPaymentGroups = groupMemberPaymentsByDate(memberPayments);
   const totalDebt = summary.balances.reduce(
     (sum, row) => sum + row.outstanding_debt,
     0
@@ -74,14 +97,109 @@ export default async function TongHopPage({ searchParams }: PageProps) {
           <span>Tồn đầu tháng</span>
           <strong>{money(summary.openingBalance)}</strong>
         </div>
-        <div className="metric">
-          <span>Thu thành viên</span>
-          <strong>{money(summary.paymentsTotal)}</strong>
-        </div>
-        <div className="metric">
-          <span>Thu vãng lai</span>
-          <strong>{money(summary.walkinsTotal)}</strong>
-        </div>
+        <details className="metric summary-money-accordion">
+          <summary>
+            <div>
+              <span>Thu thành viên</span>
+              <strong>{money(summary.paymentsTotal)}</strong>
+            </div>
+          </summary>
+          <div className="summary-money-details">
+            {memberPaymentGroups.length === 0 && (
+              <div className="empty">Chưa có khoản thu thành viên trong tháng này.</div>
+            )}
+            {memberPaymentGroups.map(([date, payments]) => {
+              const dayTotal = payments.reduce(
+                (sum, payment) => sum + (payment.amount_paid || 0),
+                0
+              );
+              return (
+                <details className="walkin-day-card" key={date}>
+                  <summary className="walkin-day-head">
+                    <strong>{formatDateVN(date)}</strong>
+                    <b>{money(dayTotal)}</b>
+                  </summary>
+                  <div className="walkin-day-items">
+                    {payments.map((payment) => {
+                      const charge = paymentCharge(payment);
+                      const member = paymentMember(payment);
+                      if (!charge || !member) return null;
+                      return (
+                        <div className="walkin-day-item" key={payment.payment_id}>
+                          <div>
+                            <strong>{member.name}</strong>
+                            <span>
+                              {chargeTypeLabels[charge.charge_type] || charge.charge_type}
+                            </span>
+                          </div>
+                          <b>{money(payment.amount_paid)}</b>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        </details>
+        <details className="metric summary-money-accordion">
+          <summary>
+            <div>
+              <span>Thu vãng lai</span>
+              <strong>{money(summary.walkinsTotal)}</strong>
+            </div>
+          </summary>
+          <div className="summary-money-details walkin-day-list">
+            {walkinGroups.length === 0 && (
+              <div className="empty">Chưa có khoản vãng lai trong tháng này.</div>
+            )}
+            {walkinGroups.map(([date, rows]) => {
+              const collected = rows.reduce(
+                (sum, row) => sum + (row.amount_collected || 0),
+                0
+              );
+              const expected = rows.reduce(
+                (sum, row) => sum + (row.amount_expected || 0),
+                0
+              );
+              const isComplete = collected >= expected;
+              return (
+                <details className="walkin-day-card" key={date}>
+                  <summary className="walkin-day-head">
+                    <div>
+                      <strong>{formatDateVN(date)}</strong>
+                    </div>
+                    <b className={isComplete ? "complete" : "missing"}>
+                      {money(collected)} / {money(expected)}
+                    </b>
+                  </summary>
+                  <div className="walkin-day-items">
+                    {rows.map((row) => {
+                      const rowCollected = row.amount_collected || 0;
+                      const rowExpected = row.amount_expected || 0;
+                      const rowComplete = rowCollected >= rowExpected;
+                      return (
+                        <div className="walkin-day-item" key={row.id}>
+                          <div>
+                            <strong>
+                              {row.walkin_name || `Vãng lai #${row.walkin_number}`}
+                            </strong>
+                            <span>
+                              Vãng lai #{row.walkin_number} - {walkinLabel(row)}
+                            </span>
+                          </div>
+                          <b className={rowComplete ? "complete" : "missing"}>
+                            {money(rowCollected)} / {money(rowExpected)}
+                          </b>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        </details>
         <div className="metric">
           <span>Tổng chi</span>
           <strong>{money(summary.expensesTotal)}</strong>
@@ -135,61 +253,6 @@ export default async function TongHopPage({ searchParams }: PageProps) {
           <span>Giao lưu lẻ, chưa từng cố định</span>
           <strong>{money(walkinFee)}</strong>
           <small>/buổi</small>
-        </div>
-      </section>
-
-      <section className="card">
-        <div className="section-title">Thu vãng lai theo ngày</div>
-        <div className="walkin-day-list">
-          {walkinGroups.length === 0 && (
-            <div className="empty">Chưa có khoản vãng lai trong tháng này.</div>
-          )}
-          {walkinGroups.map(([date, rows]) => {
-            const collected = rows.reduce(
-              (sum, row) => sum + (row.amount_collected || 0),
-              0
-            );
-            const expected = rows.reduce(
-              (sum, row) => sum + (row.amount_expected || 0),
-              0
-            );
-            const isComplete = collected >= expected;
-            return (
-              <details className="walkin-day-card" key={date}>
-                <summary className="walkin-day-head">
-                  <div>
-                    <strong>{formatDateVN(date)}</strong>
-                    <span>{isComplete ? "Đã thu đủ" : "Còn thiếu"}</span>
-                  </div>
-                  <b className={isComplete ? "complete" : "missing"}>
-                    {money(collected)} / {money(expected)} đã thu
-                  </b>
-                </summary>
-                <div className="walkin-day-items">
-                  {rows.map((row) => {
-                    const rowCollected = row.amount_collected || 0;
-                    const rowExpected = row.amount_expected || 0;
-                    const rowComplete = rowCollected >= rowExpected;
-                    return (
-                    <div className="walkin-day-item" key={row.id}>
-                      <div>
-                        <strong>
-                          {row.walkin_name || `Vãng lai #${row.walkin_number}`}
-                        </strong>
-                        <span>
-                          Vãng lai #{row.walkin_number} - {walkinLabel(row)} - {rowComplete ? "Đã thu" : "Còn thiếu"}
-                        </span>
-                      </div>
-                      <b className={rowComplete ? "complete" : "missing"}>
-                        {money(rowCollected)} / {money(rowExpected)}
-                      </b>
-                    </div>
-                    );
-                  })}
-                </div>
-              </details>
-            );
-          })}
         </div>
       </section>
 

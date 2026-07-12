@@ -51,6 +51,10 @@ function MemberFeeCard({ card, month }: { card: MemberFeeSummary; month: string 
         <span>Tổng phải thu</span>
         <strong>{money(card.totalDue)}</strong>
       </div>
+      <div className="collection-card-total collection-card-paid-total">
+        <span>Đã thu</span>
+        <strong>{money(card.totalPaid)}</strong>
+      </div>
       <div className="collection-card-status">
         <span>Trạng thái</span>
         <strong className={card.outstanding === 0 ? "paid" : "unpaid"}>

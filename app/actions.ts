@@ -826,7 +826,6 @@ export async function saveMemberFeeSummariesAction(formData: FormData) {
     if (card.stakeFee > 0) items.push({ name: "Tiền độ", amount: card.stakeFee });
     if (card.giaoLuuFee > 0) items.push({ name: "Phí giao lưu", amount: card.giaoLuuFee });
     if (card.otherFee > 0) items.push({ name: "Khoản khác", amount: card.otherFee });
-    if (card.previousDebt > 0) items.push({ name: "Nợ tồn tháng trước", amount: card.previousDebt });
     return {
       member_id: card.memberId,
       period_month: periodMonth,

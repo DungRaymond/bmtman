@@ -137,6 +137,7 @@ export type MonthlyMemberCard = {
   totalPaid: number;
   outstanding: number;
   previousDebt: number;
+  previousOutstanding: number;
   currentUnpaid: number;
   unpaidItems: {
     chargeId: number;
@@ -183,8 +184,8 @@ type AmountRow = {
   amount: number | null;
 };
 
-type MonthlyChargeRow = Charge & {
-  payments?: { amount_paid: number | null }[];
+type MonthlyChargeRow = Omit<Charge, "payments"> & {
+  payments?: { amount_paid: number | null; paid_date: string }[];
   sessions?: { session_date: string } | { session_date: string }[] | null;
 };
 
@@ -605,7 +606,7 @@ export async function getMonthlyMemberCards(month: string) {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("charges")
-    .select("*,payments(amount_paid),sessions(session_date)")
+    .select("*,payments(amount_paid,paid_date),sessions(session_date)")
     .limit(1000);
   if (error) throw error;
 
@@ -626,7 +627,8 @@ export async function getMonthlyMemberCards(month: string) {
       totalPaid: 0,
       outstanding: row.status === "fixed" ? fixedBaseFee : 0,
       previousDebt: 0,
-      currentUnpaid: 0,
+      previousOutstanding: 0,
+      currentUnpaid: row.status === "fixed" ? fixedBaseFee : 0,
       unpaidItems: [],
       chargeCount: 0,
     });
@@ -637,29 +639,27 @@ export async function getMonthlyMemberCards(month: string) {
     if (!card) continue;
 
     const amount = charge.amount || 0;
-    const paid = (charge.payments || []).reduce(
-      (sum, payment) => sum + (payment.amount_paid || 0),
-      0
-    );
-    const outstanding = Math.max(amount - paid, 0);
     const period = chargePeriod(charge);
     const isCurrentMonth = chargeBelongsToMonth(charge, month);
-
-    if (outstanding > 0 && period < month) {
-      card.previousDebt += outstanding;
-      card.unpaidItems.push({
-        chargeId: charge.charge_id,
-        label: chargeTypeLabels[charge.charge_type] || charge.charge_type,
-        amount,
-        paid,
-        outstanding,
-        period,
-      });
-    }
+    const payments = charge.payments || [];
+    const paidInMonth = payments.reduce(
+      (sum, payment) =>
+        payment.paid_date >= `${month}-01` && payment.paid_date < nextMonth(month)
+          ? sum + (payment.amount_paid || 0)
+          : sum,
+      0
+    );
+    const paidThroughMonth = payments.reduce(
+      (sum, payment) =>
+        payment.paid_date < nextMonth(month) ? sum + (payment.amount_paid || 0) : sum,
+      0
+    );
+    const outstandingAtMonthEnd = Math.max(amount - paidThroughMonth, 0);
 
     if (!isCurrentMonth) continue;
 
     if (charge.charge_type === "monthly_fixed_fee") {
+      card.currentUnpaid = Math.max(card.currentUnpaid - card.fixedFee, 0);
       card.fixedFee = amount;
     } else if (
       charge.charge_type === "monthly_stake_fee" ||
@@ -672,15 +672,15 @@ export async function getMonthlyMemberCards(month: string) {
       card.otherFee += amount;
     }
 
-    card.totalPaid += paid;
-    if (outstanding > 0) {
-      card.currentUnpaid += outstanding;
+    card.totalPaid += paidInMonth;
+    if (outstandingAtMonthEnd > 0) {
+      card.currentUnpaid += outstandingAtMonthEnd;
       card.unpaidItems.push({
         chargeId: charge.charge_id,
         label: chargeTypeLabels[charge.charge_type] || charge.charge_type,
         amount,
-        paid,
-        outstanding,
+        paid: paidThroughMonth,
+        outstanding: outstandingAtMonthEnd,
         period,
       });
     }
@@ -689,7 +689,7 @@ export async function getMonthlyMemberCards(month: string) {
 
   for (const card of cards.values()) {
     card.totalDue = card.fixedFee + card.stakeFee + card.giaoLuuFee + card.otherFee;
-    card.outstanding = card.previousDebt + Math.max(card.totalDue - card.totalPaid, 0);
+    card.outstanding = card.currentUnpaid;
   }
 
   return Array.from(cards.values()).sort((a, b) => {
@@ -746,7 +746,6 @@ function memberCardToFeeSummary(card: MonthlyMemberCard): MemberFeeSummary {
   if (card.stakeFee > 0) items.push({ name: "Tiền độ", amount: card.stakeFee });
   if (card.giaoLuuFee > 0) items.push({ name: "Phí giao lưu", amount: card.giaoLuuFee });
   if (card.otherFee > 0) items.push({ name: "Khoản khác", amount: card.otherFee });
-  if (card.previousDebt > 0) items.push({ name: "Nợ tồn tháng trước", amount: card.previousDebt });
   return {
     memberId: card.memberId,
     memberNumber: card.memberNumber,
@@ -765,7 +764,8 @@ function memberFeeItemName(name: string) {
     "Tien do": "Tiền độ",
     "Phi giao luu": "Phí giao lưu",
     "Khoan khac": "Khoản khác",
-    "No ton thang truoc": "Nợ tồn tháng trước",
+    "No ton thang truoc": "Khoản từ tháng trước",
+    "Nợ tồn tháng trước": "Khoản từ tháng trước",
   };
   return labels[name] || name;
 }
