@@ -86,6 +86,34 @@ async function upsertSessionCharge(input: {
   if (error) throw error;
 }
 
+async function ensureWalkinSessionFee(input: {
+  sessionId: number;
+  walkinNumber: number;
+  amount: number;
+}) {
+  const supabase = getSupabaseAdmin();
+  const { data: existing, error: findError } = await supabase
+    .from("session_walkins")
+    .select("id")
+    .eq("session_id", input.sessionId)
+    .eq("walkin_number", input.walkinNumber)
+    .eq("fee_type", "session_fee")
+    .maybeSingle();
+  if (findError) throw findError;
+  if (existing) return;
+
+  const { error } = await supabase.from("session_walkins").insert({
+    session_id: input.sessionId,
+    walkin_number: input.walkinNumber,
+    fee_type: "session_fee",
+    amount_expected: input.amount,
+    is_paid: 0,
+    amount_collected: null,
+    note: "Tự tạo khi chốt sổ độ ngày",
+  });
+  if (error) throw error;
+}
+
 async function saveDailyScorecard(date: string, payload: DailyScorecardPayload) {
   const { error } = await getSupabaseAdmin().from("daily_scorecards").upsert(
     {
@@ -130,11 +158,26 @@ function scoreSetHasDuplicatePlayers(set: ScoreSet) {
     .map((player) => {
       if (player.type === "member") return `m:${player.memberId}`;
       if (player.type === "walkin") return `w:${player.walkinNumber}`;
+      if (player.type === "guest") return `g:${player.name?.trim().toLocaleLowerCase("vi")}`;
       return "";
     })
     .filter(Boolean);
   return new Set(keys).size !== keys.length;
 }
+
+function scoreEntryPlayer(formData: FormData, key: string) {
+  const value = String(formData.get(key) || "").trim();
+  if (value === "custom") {
+    const name = String(formData.get(`${key}_custom`) || "").trim().replace(/\s+/g, " ");
+    return parseScorePlayerKey(`guest:${name}`);
+  }
+  return parseScorePlayerKey(value);
+}
+
+export type ConfirmScoreEntryState = {
+  successKey: number;
+  error: string;
+};
 
 function losingPlayers(set: ScoreSet) {
   return set.winner === "A" ? set.players.slice(2, 4) : set.players.slice(0, 2);
@@ -146,6 +189,10 @@ function presentPlayers(set: ScoreSet) {
 
 function addToMap(map: Map<number, number>, key: number, value: number) {
   map.set(key, (map.get(key) || 0) + value);
+}
+
+function guestKey(name: string) {
+  return name.trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
 }
 
 function assertScorecardIsOpen(settledAt: string | null) {
@@ -186,6 +233,53 @@ export async function addScoreSetAction(formData: FormData) {
   await saveDailyScorecard(date, payload);
   revalidatePath("/");
   redirect(`/?date=${date}`);
+}
+
+export async function confirmScoreEntryAction(
+  previousState: ConfirmScoreEntryState,
+  formData: FormData
+): Promise<ConfirmScoreEntryState> {
+  try {
+    const date = requiredString(formData, "date");
+    const card = await getDailyScorecard(date);
+    assertScorecardIsOpen(card.settled_at);
+    const payload = normalizeScorecardPayload(card.payload);
+    if (payload.sets.length >= 12) throw new Error("Một ngày tối đa 12 thẻ ghi độ.");
+
+    const winnerValue = String(formData.get("winner") || "");
+    const set: ScoreSet = {
+      id: globalThis.crypto.randomUUID(),
+      amount: intValue(formData, "amount"),
+      winner: winnerValue === "A" || winnerValue === "B" ? winnerValue : null,
+      locked: true,
+      players: [
+        scoreEntryPlayer(formData, "player_0"),
+        scoreEntryPlayer(formData, "player_1"),
+        scoreEntryPlayer(formData, "player_2"),
+        scoreEntryPlayer(formData, "player_3"),
+      ],
+    };
+
+    if (set.amount < 5000) {
+      throw new Error("Mức độ phải từ 5.000đ.");
+    }
+    if (!scoreSetIsReady(set)) {
+      throw new Error("Cần chọn người đầu tiên của mỗi bên và bên thắng.");
+    }
+    if (scoreSetHasDuplicatePlayers(set)) {
+      throw new Error("Một thẻ không được chọn trùng người.");
+    }
+
+    payload.sets.push(set);
+    await saveDailyScorecard(date, payload);
+    revalidatePath("/");
+    return { successKey: previousState.successKey + 1, error: "" };
+  } catch (error) {
+    return {
+      successKey: previousState.successKey,
+      error: error instanceof Error ? error.message : "Không ghi được thẻ độ.",
+    };
+  }
 }
 
 export async function saveScoreSetAction(formData: FormData) {
@@ -275,6 +369,8 @@ export async function settleDailyScorecardAction(formData: FormData) {
   const walkinStakes = new Map<number, number>();
   const presentMemberIds = new Set<number>();
   const presentWalkinNumbers = new Set<number>();
+  const presentGuestNames = new Map<string, string>();
+  const guestStakes = new Map<string, number>();
 
   for (const set of payload.sets) {
     for (const player of presentPlayers(set)) {
@@ -283,6 +379,9 @@ export async function settleDailyScorecardAction(formData: FormData) {
       }
       if (player.type === "walkin" && player.walkinNumber) {
         presentWalkinNumbers.add(player.walkinNumber);
+      }
+      if (player.type === "guest" && player.name) {
+        presentGuestNames.set(guestKey(player.name), player.name);
       }
     }
 
@@ -293,11 +392,53 @@ export async function settleDailyScorecardAction(formData: FormData) {
       if (player.type === "walkin" && player.walkinNumber) {
         addToMap(walkinStakes, player.walkinNumber, set.amount);
       }
+      if (player.type === "guest" && player.name) {
+        const key = guestKey(player.name);
+        guestStakes.set(key, (guestStakes.get(key) || 0) + set.amount);
+      }
     }
   }
 
   const supabase = getSupabaseAdmin();
   const walkinFee = await getFeeAmount("walkin", "base_fee", date);
+
+  const { data: existingWalkins, error: existingWalkinsError } = await supabase
+    .from("session_walkins")
+    .select("id,walkin_number,walkin_name,fee_type")
+    .eq("session_id", session.session_id);
+  if (existingWalkinsError) throw existingWalkinsError;
+  const guestNumbers = new Map<string, number>();
+  for (const row of existingWalkins || []) {
+    if (row.fee_type === "session_fee" && row.walkin_name) {
+      guestNumbers.set(guestKey(row.walkin_name), row.walkin_number);
+    }
+  }
+
+  for (const [key, name] of presentGuestNames) {
+    if (!guestNumbers.has(key)) {
+      await createWalkinReceivables({
+        sessionId: session.session_id,
+        count: 1,
+        name,
+        amount: walkinFee,
+      });
+      const { data: created, error: createdError } = await supabase
+        .from("session_walkins")
+        .select("walkin_number")
+        .eq("session_id", session.session_id)
+        .eq("fee_type", "session_fee")
+        .eq("walkin_name", name)
+        .order("id", { ascending: false })
+        .limit(1)
+        .single();
+      if (createdError) throw createdError;
+      guestNumbers.set(key, created.walkin_number);
+    }
+    const walkinNumber = guestNumbers.get(key);
+    if (walkinNumber && guestStakes.has(key)) {
+      addToMap(walkinStakes, walkinNumber, guestStakes.get(key) || 0);
+    }
+  }
 
   for (const memberId of presentMemberIds) {
     const status = await getMemberStatus(memberId, date);
@@ -334,19 +475,11 @@ export async function settleDailyScorecardAction(formData: FormData) {
   }
 
   for (const walkinNumber of presentWalkinNumbers) {
-    const { error } = await supabase.from("session_walkins").upsert(
-      {
-        session_id: session.session_id,
-        walkin_number: walkinNumber,
-        fee_type: "session_fee",
-        amount_expected: walkinFee,
-        is_paid: 0,
-        amount_collected: null,
-        note: "Tự tạo khi chốt sổ độ ngày",
-      },
-      { onConflict: "session_id,walkin_number,fee_type" }
-    );
-    if (error) throw error;
+    await ensureWalkinSessionFee({
+      sessionId: session.session_id,
+      walkinNumber,
+      amount: walkinFee,
+    });
   }
 
   for (const [walkinNumber, amount] of walkinStakes.entries()) {

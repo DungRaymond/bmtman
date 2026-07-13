@@ -40,9 +40,10 @@ export type SessionWalkin = {
 };
 
 export type ScorePlayer = {
-  type: "empty" | "member" | "walkin";
+  type: "empty" | "member" | "walkin" | "guest";
   memberId?: number;
   walkinNumber?: number;
+  name?: string;
 };
 
 export type ScoreSet = {
@@ -316,6 +317,7 @@ export function scorePlayerKey(player: ScorePlayer) {
   if (player.type === "walkin" && player.walkinNumber) {
     return `walkin:${player.walkinNumber}`;
   }
+  if (player.type === "guest" && player.name) return `guest:${player.name}`;
   return "";
 }
 
@@ -327,6 +329,10 @@ export function parseScorePlayerKey(value: string): ScorePlayer {
   }
   if (type === "walkin" && Number.isFinite(id) && id > 0) {
     return { type: "walkin", walkinNumber: Math.round(id) };
+  }
+  if (type === "guest") {
+    const name = value.slice("guest:".length).trim().replace(/\s+/g, " ");
+    if (name) return { type: "guest", name: name.slice(0, 80) };
   }
   return emptyScorePlayer();
 }
@@ -352,6 +358,7 @@ function normalizeScorePlayer(raw: unknown): ScorePlayer {
   if (!isRecord(raw)) return emptyScorePlayer();
   if (raw.type === "member") return parseScorePlayerKey(`member:${String(raw.memberId || "")}`);
   if (raw.type === "walkin") return parseScorePlayerKey(`walkin:${String(raw.walkinNumber || "")}`);
+  if (raw.type === "guest") return parseScorePlayerKey(`guest:${String(raw.name || "")}`);
   return emptyScorePlayer();
 }
 
@@ -372,6 +379,35 @@ export async function getMembers() {
     .order("name", { ascending: true });
   if (error) throw error;
   return (data || []) as Member[];
+}
+
+export async function getNamedWalkinNames() {
+  if (!hasServerSupabaseConfig) return [] as string[];
+  const supabase = getSupabaseAdmin();
+  const { data: people, error: peopleError } = await supabase
+    .from("walkin_people")
+    .select("display_name")
+    .order("display_name", { ascending: true });
+
+  if (!peopleError) {
+    return (people || []).map((row) => row.display_name).filter(Boolean) as string[];
+  }
+  if (peopleError.code !== "PGRST205" && peopleError.code !== "42P01") {
+    throw peopleError;
+  }
+
+  const { data: walkins, error: walkinsError } = await supabase
+    .from("session_walkins")
+    .select("walkin_name")
+    .not("walkin_name", "is", null);
+  if (walkinsError) throw walkinsError;
+
+  const names = new Map<string, string>();
+  for (const row of walkins || []) {
+    const name = row.walkin_name?.trim().replace(/\s+/g, " ");
+    if (name) names.set(name.toLocaleLowerCase("vi"), name);
+  }
+  return Array.from(names.values()).sort((a, b) => a.localeCompare(b, "vi"));
 }
 
 export async function getActiveMembers(date: string) {
