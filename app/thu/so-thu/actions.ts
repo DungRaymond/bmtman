@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { assertAdmin } from "@/lib/security";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
+import { createWalkinReceivables } from "@/lib/walkinReceivables";
 
 const chargeTypes = new Set([
   "monthly_fixed_fee",
@@ -193,13 +194,12 @@ export async function createLedgerWalkinAction(formData: FormData) {
   const sessionId = await ensureSession(date);
   const name = textValue(formData, "walkin_name") || null;
   const amount = positiveInt(formData, "amount_expected");
-  const { error } = await getSupabaseAdmin().rpc("create_walkin_receivables", {
-    p_session_id: sessionId,
-    p_walkin_count: 1,
-    p_walkin_name: name,
-    p_amount: amount,
+  await createWalkinReceivables({
+    sessionId,
+    count: 1,
+    name,
+    amount,
   });
-  if (error) throw new Error(`Không tạo được khoản vãng lai (${error.code}): ${error.message}`);
   revalidateLedger();
   redirect(returnPath(formData));
 }
@@ -210,9 +210,14 @@ export async function updateLedgerWalkinAction(formData: FormData) {
   const amountExpected = positiveInt(formData, "amount_expected");
   const amountCollected = optionalInt(formData, "amount_collected");
   const isPaid = textValue(formData, "is_paid") === "1";
+  const walkinName = textValue(formData, "walkin_name") || null;
+  if (walkinName && walkinName.length > 80) {
+    throw new Error("Tên vãng lai không được quá 80 ký tự.");
+  }
   const { error } = await getSupabaseAdmin()
     .from("session_walkins")
     .update({
+      walkin_name: walkinName,
       amount_expected: amountExpected,
       amount_collected: isPaid ? amountCollected ?? 0 : null,
       is_paid: isPaid ? 1 : 0,

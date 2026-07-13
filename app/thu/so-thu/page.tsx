@@ -247,6 +247,7 @@ export default async function SoThuPage({ searchParams }: PageProps) {
               <form className="grid3 ledger-form" action={updateLedgerWalkinAction}>
                 <input type="hidden" name="id" value={walkin.id} />
                 <input type="hidden" name="return_to" value={returnTo} />
+                <Field label="Tên (không bắt buộc)"><input name="walkin_name" maxLength={80} defaultValue={walkin.walkin_name || ""} /></Field>
                 <Field label="Số tiền phải thu"><input name="amount_expected" type="number" min="1" defaultValue={walkin.amount_expected} required /></Field>
                 <Field label="Số tiền đã thu"><input name="amount_collected" type="number" min="0" defaultValue={walkin.amount_collected ?? ""} /></Field>
                 <Field label="Trạng thái"><select name="is_paid" defaultValue={walkin.is_paid ? "1" : "0"}><option value="0">Chưa thu</option><option value="1">Đã thu / thu một phần</option></select></Field>

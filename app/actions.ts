@@ -15,6 +15,7 @@ import {
 } from "@/lib/finance";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 import { assertAdmin } from "@/lib/security";
+import { createWalkinReceivables } from "@/lib/walkinReceivables";
 
 function requiredString(formData: FormData, key: string) {
   const value = String(formData.get(key) || "").trim();
@@ -509,15 +510,12 @@ export async function createWalkinReceivableAction(formData: FormData) {
     throw new Error("Mức thu vãng lai phải là bội số của 5.000đ.");
   }
 
-  const { error } = await getSupabaseAdmin().rpc("create_walkin_receivables", {
-    p_session_id: session.session_id,
-    p_walkin_count: walkinCount,
-    p_walkin_name: walkinName,
-    p_amount: amount,
+  await createWalkinReceivables({
+    sessionId: session.session_id,
+    count: walkinCount,
+    name: walkinName,
+    amount,
   });
-  if (error) {
-    throw new Error(`Không tạo được khoản vãng lai (${error.code}): ${error.message}`);
-  }
 
   revalidatePath("/thu");
   revalidatePath("/tong-hop");
