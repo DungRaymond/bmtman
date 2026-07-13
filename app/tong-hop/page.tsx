@@ -230,13 +230,22 @@ export default async function TongHopPage({ searchParams }: PageProps) {
       </section>
 
       <section className="debt-card-grid">
-        <div className="debt-summary-card memfee-link-card">
+        <div className="debt-summary-card">
           <div>
             <span>Thẻ tổng kết chi phí thành viên</span>
             <strong>Memfee cards</strong>
           </div>
           <Link className="btn-primary" href={`/tong-hop/memfee-cards?month=${month}`}>
             Mở danh sách
+          </Link>
+        </div>
+        <div className="debt-summary-card">
+          <div>
+            <span>Tạm tính từ các thẻ đã ghi trong tháng</span>
+            <strong>Thống kê tiền độ</strong>
+          </div>
+          <Link className="btn-primary" href={`/tong-hop/tien-do?month=${month}`}>
+            Xem thống kê
           </Link>
         </div>
       </section>

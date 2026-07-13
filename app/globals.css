@@ -339,10 +339,6 @@ code {
   border-bottom: 1px solid rgba(209, 250, 229, 0.14);
 }
 
-.memfee-link-card {
-  grid-column: 1 / -1;
-}
-
 .memfee-page-actions {
   display: flex;
   align-items: center;
@@ -595,6 +591,120 @@ code {
 
 .walkin-day-item strong {
   color: #e2e8f0;
+}
+
+.stake-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stake-person-list {
+  display: grid;
+  gap: 10px;
+}
+
+.stake-person-card {
+  background: #172033;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.stake-person-head {
+  min-height: 72px;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.stake-person-head::-webkit-details-marker {
+  display: none;
+}
+
+.stake-person-head::after {
+  content: "+";
+  color: #94a3b8;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.stake-person-card[open] > .stake-person-head::after {
+  content: "−";
+}
+
+.stake-person-head strong,
+.stake-day-head strong,
+.stake-turn-row strong {
+  color: #f8fafc;
+}
+
+.stake-person-head span,
+.stake-turn-row span {
+  color: #94a3b8;
+  display: block;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.stake-person-head b,
+.stake-day-head b,
+.stake-turn-row b {
+  color: #4ade80;
+  white-space: nowrap;
+}
+
+.stake-person-days {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid #334155;
+  background: #0f172a;
+}
+
+.stake-day-group {
+  border: 1px solid #273449;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.stake-day-head,
+.stake-turn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.stake-day-head {
+  padding: 10px 12px;
+  background: #142133;
+}
+
+.stake-day-head span {
+  display: block;
+  width: fit-content;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.stake-day-head span.settled {
+  color: #4ade80;
+}
+
+.stake-day-head span.unsettled {
+  color: #fbbf24;
+}
+
+.stake-turn-row {
+  padding: 10px 12px;
+  border-top: 1px solid #1f2d42;
 }
 
 .received-member-list {
@@ -1759,6 +1869,7 @@ button {
   }
 
   .summary-grid,
+  .stake-overview,
   .debt-card-grid,
   .member-debt-layout,
   .score-layout,

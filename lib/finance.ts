@@ -65,6 +65,28 @@ export type DailyScorecard = {
   updated_at: string | null;
 };
 
+export type MonthlyStakeTurn = {
+  setId: string;
+  setNumber: number;
+  amount: number;
+  losingSide: "A" | "B";
+  winnerNames: string;
+};
+
+export type MonthlyStakeDay = {
+  date: string;
+  settled: boolean;
+  total: number;
+  turns: MonthlyStakeTurn[];
+};
+
+export type MonthlyStakePerson = {
+  key: string;
+  name: string;
+  total: number;
+  days: MonthlyStakeDay[];
+};
+
 export type WalkinReceivable = SessionWalkin & {
   sessions?: { session_date: string } | { session_date: string }[] | null;
 };
@@ -510,6 +532,129 @@ export async function getDailyScorecard(date: string) {
     ...row,
     payload: normalizeScorecardPayload(row.payload),
   } satisfies DailyScorecard;
+}
+
+export async function getMonthlyStakePeople(month: string) {
+  if (!hasServerSupabaseConfig) return [] as MonthlyStakePerson[];
+
+  const supabase = getSupabaseAdmin();
+  const [scorecardsResult, members, walkins] = await Promise.all([
+    supabase
+      .from("daily_scorecards")
+      .select("score_date,payload,settled_at,updated_at")
+      .gte("score_date", `${month}-01`)
+      .lt("score_date", nextMonth(month))
+      .order("score_date", { ascending: false }),
+    getMembers(),
+    getWalkinsByMonth(month),
+  ]);
+  if (scorecardsResult.error) throw scorecardsResult.error;
+
+  const memberNames = new Map(members.map((member) => [member.member_id, member.name]));
+  const walkinNames = new Map<string, string>();
+  for (const walkin of walkins) {
+    const date = walkinSessionDate(walkin);
+    const name = cleanPersonName(walkin.walkin_name || "");
+    if (date && name) walkinNames.set(`${date}:${walkin.walkin_number}`, name);
+  }
+
+  type MutablePerson = {
+    key: string;
+    name: string;
+    days: Map<string, MonthlyStakeDay>;
+  };
+  const people = new Map<string, MutablePerson>();
+
+  for (const rawCard of (scorecardsResult.data || []) as DailyScorecardRow[]) {
+    const payload = normalizeScorecardPayload(rawCard.payload);
+    for (const [setIndex, set] of payload.sets.entries()) {
+      if (!set.winner || set.amount <= 0) continue;
+
+      const winnerPlayers = set.winner === "A"
+        ? set.players.slice(0, 2)
+        : set.players.slice(2, 4);
+      const loserPlayers = set.winner === "A"
+        ? set.players.slice(2, 4)
+        : set.players.slice(0, 2);
+      const winnerNames = winnerPlayers
+        .map((player) => scorePerson(player, rawCard.score_date, memberNames, walkinNames).name)
+        .filter(Boolean)
+        .join(" & ");
+
+      for (const player of loserPlayers) {
+        const person = scorePerson(player, rawCard.score_date, memberNames, walkinNames);
+        if (!person.key || !person.name) continue;
+
+        let personGroup = people.get(person.key);
+        if (!personGroup) {
+          personGroup = { ...person, days: new Map() };
+          people.set(person.key, personGroup);
+        }
+
+        let day = personGroup.days.get(rawCard.score_date);
+        if (!day) {
+          day = {
+            date: rawCard.score_date,
+            settled: !!rawCard.settled_at,
+            total: 0,
+            turns: [],
+          };
+          personGroup.days.set(rawCard.score_date, day);
+        }
+        day.total += set.amount;
+        day.turns.push({
+          setId: set.id,
+          setNumber: setIndex + 1,
+          amount: set.amount,
+          losingSide: set.winner === "A" ? "B" : "A",
+          winnerNames,
+        });
+      }
+    }
+  }
+
+  return Array.from(people.values())
+    .map((person) => {
+      const days = Array.from(person.days.values()).sort((a, b) => b.date.localeCompare(a.date));
+      return {
+        key: person.key,
+        name: person.name,
+        total: days.reduce((sum, day) => sum + day.total, 0),
+        days,
+      };
+    })
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "vi"));
+}
+
+function cleanPersonName(name: string) {
+  return name.trim().replace(/\s+/g, " ");
+}
+
+function scorePerson(
+  player: ScorePlayer,
+  date: string,
+  memberNames: Map<number, string>,
+  walkinNames: Map<string, string>
+) {
+  if (player.type === "member" && player.memberId) {
+    return {
+      key: `member:${player.memberId}`,
+      name: memberNames.get(player.memberId) || `Thành viên #${player.memberId}`,
+    };
+  }
+  if (player.type === "guest" && player.name) {
+    const name = cleanPersonName(player.name);
+    return { key: name ? `guest:${name.toLocaleLowerCase("vi")}` : "", name };
+  }
+  if (player.type === "walkin" && player.walkinNumber) {
+    const name = walkinNames.get(`${date}:${player.walkinNumber}`) || "";
+    if (name) return { key: `guest:${name.toLocaleLowerCase("vi")}`, name };
+    return {
+      key: `walkin:${date}:${player.walkinNumber}`,
+      name: `Vãng lai #${player.walkinNumber}`,
+    };
+  }
+  return { key: "", name: "" };
 }
 
 export async function getWalkinReceivables() {
