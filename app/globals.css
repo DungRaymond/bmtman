@@ -1415,6 +1415,26 @@ button {
   white-space: nowrap;
 }
 
+.ledger-row-total {
+  justify-items: end;
+}
+
+.ledger-status {
+  font-weight: 800;
+}
+
+.ledger-status.unpaid {
+  color: #f87171;
+}
+
+.ledger-status.partial {
+  color: #fbbf24;
+}
+
+.ledger-status.paid {
+  color: #4ade80;
+}
+
 .ledger-form-actions {
   display: flex;
   gap: 8px;
@@ -1424,6 +1444,11 @@ button {
 .btn-danger {
   background: #7f1d1d;
   color: #fee2e2;
+}
+
+.btn-warning {
+  background: #92400e;
+  color: #fef3c7;
 }
 
 @media (max-width: 780px) {
@@ -1511,5 +1536,9 @@ button {
   .ledger-row > summary {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .ledger-row-total {
+    justify-items: start;
   }
 }

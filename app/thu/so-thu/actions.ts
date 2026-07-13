@@ -146,6 +146,18 @@ export async function deleteLedgerChargeAction(formData: FormData) {
   redirect(returnPath(formData));
 }
 
+export async function markLedgerChargeUnpaidAction(formData: FormData) {
+  await assertAdmin();
+  const chargeId = positiveInt(formData, "charge_id");
+  const { error } = await getSupabaseAdmin()
+    .from("payments")
+    .delete()
+    .eq("charge_id", chargeId);
+  if (error) throw new Error(`Không đặt lại được trạng thái chưa thu (${error.code}): ${error.message}`);
+  revalidateLedger();
+  redirect(returnPath(formData));
+}
+
 export async function createLedgerPaymentAction(formData: FormData) {
   await assertAdmin();
   const { error } = await getSupabaseAdmin().from("payments").insert(paymentInput(formData));

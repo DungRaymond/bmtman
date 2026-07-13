@@ -7,6 +7,7 @@ import {
   deleteLedgerChargeAction,
   deleteLedgerPaymentAction,
   deleteLedgerWalkinAction,
+  markLedgerChargeUnpaidAction,
   updateLedgerChargeAction,
   updateLedgerPaymentAction,
   updateLedgerWalkinAction,
@@ -128,28 +129,52 @@ export default async function SoThuPage({ searchParams }: PageProps) {
         </details>
         <div className="ledger-list">
           {charges.length === 0 && <div className="empty">Không có khoản phải thu trong tháng này.</div>}
-          {charges.map((charge) => (
-            <details className="ledger-row" key={charge.charge_id}>
-              <summary>
-                <div><strong>{charge.members?.name || "Không rõ"}</strong><span>{chargeTypeLabels[charge.charge_type] || charge.charge_type}</span></div>
-                <b>{money(charge.amount)}</b>
-              </summary>
-              <form className="grid3 ledger-form" action={updateLedgerChargeAction}>
-                <input type="hidden" name="charge_id" value={charge.charge_id} />
-                <input type="hidden" name="return_to" value={returnTo} />
-                <MemberSelect members={members} defaultValue={charge.member_id} />
-                <ChargeTypeSelect defaultValue={charge.charge_type} />
-                <Field label="Số tiền"><input name="amount" type="number" min="1" defaultValue={charge.amount} required /></Field>
-                <Field label="Ngày tạo"><input name="created_at" type="date" defaultValue={charge.created_at} required /></Field>
-                <Field label="Tháng áp dụng"><input name="period_month" type="month" defaultValue={charge.period_month || ""} /></Field>
-                <Field label="Ghi chú"><input name="note" defaultValue={charge.note || ""} /></Field>
-                <div className="ledger-form-actions">
-                  <button className="btn-primary" type="submit">Lưu thay đổi</button>
-                  <button className="btn-danger" type="submit" formAction={deleteLedgerChargeAction}>Xóa khoản</button>
-                </div>
-              </form>
-            </details>
-          ))}
+          {charges.map((charge) => {
+            const paid = (charge.payments || []).reduce(
+              (sum, payment) => sum + (payment.amount_paid || 0),
+              0
+            );
+            const status = paid <= 0 ? "Chưa thu" : paid < charge.amount ? "Thu một phần" : "Đã thu";
+            const statusClass = paid <= 0 ? "unpaid" : paid < charge.amount ? "partial" : "paid";
+            return (
+              <details className="ledger-row" key={charge.charge_id}>
+                <summary>
+                  <div>
+                    <strong>{charge.members?.name || "Không rõ"}</strong>
+                    <span>{chargeTypeLabels[charge.charge_type] || charge.charge_type}</span>
+                  </div>
+                  <div className="ledger-row-total">
+                    <b>{money(paid)} / {money(charge.amount)}</b>
+                    <span className={`ledger-status ${statusClass}`}>{status}</span>
+                  </div>
+                </summary>
+                <form className="grid3 ledger-form" action={updateLedgerChargeAction}>
+                  <input type="hidden" name="charge_id" value={charge.charge_id} />
+                  <input type="hidden" name="return_to" value={returnTo} />
+                  <MemberSelect members={members} defaultValue={charge.member_id} />
+                  <ChargeTypeSelect defaultValue={charge.charge_type} />
+                  <Field label="Số tiền"><input name="amount" type="number" min="1" defaultValue={charge.amount} required /></Field>
+                  <Field label="Ngày tạo"><input name="created_at" type="date" defaultValue={charge.created_at} required /></Field>
+                  <Field label="Tháng áp dụng"><input name="period_month" type="month" defaultValue={charge.period_month || ""} /></Field>
+                  <Field label="Ghi chú"><input name="note" defaultValue={charge.note || ""} /></Field>
+                  <div className="ledger-form-actions">
+                    <button className="btn-primary" type="submit">Lưu thay đổi</button>
+                    {paid > 0 && (
+                      <button
+                        className="btn-warning"
+                        type="submit"
+                        formAction={markLedgerChargeUnpaidAction}
+                        title="Xóa toàn bộ lần thanh toán của khoản này"
+                      >
+                        Đặt lại chưa thu
+                      </button>
+                    )}
+                    <button className="btn-danger" type="submit" formAction={deleteLedgerChargeAction}>Xóa khoản</button>
+                  </div>
+                </form>
+              </details>
+            );
+          })}
         </div>
       </section>
 
