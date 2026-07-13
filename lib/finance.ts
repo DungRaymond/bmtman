@@ -30,6 +30,7 @@ export type SessionWalkin = {
   session_id: number;
   walkin_number: number;
   walkin_name: string | null;
+  walkin_person_id: number | null;
   fee_type: "session_fee" | "stake_fee";
   amount_expected: number;
   is_paid: number;
@@ -90,6 +91,31 @@ export type MonthlyMemberPayment = {
   amount_paid: number;
   paid_date: string;
   payment_method: string | null;
+  note: string | null;
+  charges:
+    | {
+        charge_id: number;
+        charge_type: string;
+        amount: number;
+        period_month: string | null;
+        members: Member | Member[] | null;
+      }
+    | {
+        charge_id: number;
+        charge_type: string;
+        amount: number;
+        period_month: string | null;
+        members: Member | Member[] | null;
+      }[];
+};
+
+export type Payment = {
+  payment_id: number;
+  charge_id: number;
+  amount_paid: number;
+  paid_date: string;
+  payment_method: "cash" | "bank_transfer" | "e_wallet" | "other" | null;
+  recorded_by: number | null;
   note: string | null;
   charges:
     | {
@@ -500,6 +526,20 @@ export async function getMemberPaymentsByMonth(month: string) {
     .order("payment_id", { ascending: false });
   if (error) throw error;
   return (data || []) as MonthlyMemberPayment[];
+}
+
+export async function getPayments() {
+  if (!hasServerSupabaseConfig) return [] as Payment[];
+  const { data, error } = await getSupabaseAdmin()
+    .from("payments")
+    .select(
+      "payment_id,charge_id,amount_paid,paid_date,payment_method,recorded_by,note,charges!inner(charge_id,charge_type,amount,period_month,members!inner(member_id,name,joined_date,note))"
+    )
+    .order("paid_date", { ascending: false })
+    .order("payment_id", { ascending: false })
+    .limit(300);
+  if (error) throw error;
+  return (data || []) as Payment[];
 }
 
 export async function getMemberBalances() {

@@ -41,7 +41,7 @@ Schema chi tiết nằm trong `badminton finance schema.md`. Trên Supabase/Post
 ```bash
 npm install
 cp .env.local.example .env.local
-# rồi điền SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY và APP_ADMIN_PIN vào .env.local
+# rồi điền SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY và THU_ACCESS_PIN vào .env.local
 npm run dev
 ```
 
@@ -54,7 +54,7 @@ Mở http://localhost:3000
 3. Ở bước cấu hình, vào **Environment Variables** thêm:
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
-   - `APP_ADMIN_PIN`
+   - `THU_ACCESS_PIN`
 4. Bấm Deploy.
 
 Hoặc dùng Vercel CLI:
@@ -64,7 +64,7 @@ npm i -g vercel
 vercel
 vercel env add SUPABASE_URL
 vercel env add SUPABASE_SERVICE_ROLE_KEY
-vercel env add APP_ADMIN_PIN
+vercel env add THU_ACCESS_PIN
 vercel --prod
 ```
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { createManualChargeAction } from "@/app/actions";
 import type { Member } from "@/lib/finance";
 
@@ -8,14 +8,12 @@ type Props = {
   members: Member[];
   chargeTypes: { value: string; label: string }[];
   initialDate: string;
-  adminPinField: ReactNode;
 };
 
 export function ManualChargeForm({
   members,
   chargeTypes,
   initialDate,
-  adminPinField,
 }: Props) {
   const [collectionDate, setCollectionDate] = useState(initialDate);
   const [periodMonth, setPeriodMonth] = useState(initialDate.slice(0, 7));
@@ -78,7 +76,6 @@ export function ManualChargeForm({
         <label>Ghi chú</label>
         <input name="note" />
       </div>
-      {adminPinField}
       <button className="btn-primary" type="submit">Tạo khoản thu</button>
     </form>
   );

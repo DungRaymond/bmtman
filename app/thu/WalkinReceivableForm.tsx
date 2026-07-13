@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { createWalkinReceivableAction } from "@/app/actions";
 
 type Props = {
   initialDate: string;
   initialAmount: number;
-  adminPinField: ReactNode;
 };
 
 const AMOUNT_STEP = 5000;
@@ -14,7 +13,6 @@ const AMOUNT_STEP = 5000;
 export function WalkinReceivableForm({
   initialDate,
   initialAmount,
-  adminPinField,
 }: Props) {
   const [amount, setAmount] = useState(Math.max(initialAmount, AMOUNT_STEP));
   const [walkinCount, setWalkinCount] = useState(1);
@@ -70,7 +68,6 @@ export function WalkinReceivableForm({
           <input type="hidden" name="amount" value={amount} />
         </div>
       </div>
-      {adminPinField}
       <button className="btn-primary" type="submit">
         Tạo {walkinCount || 0} khoản vãng lai
       </button>

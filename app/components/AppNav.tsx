@@ -4,6 +4,7 @@ import Link from "next/link";
 const items = [
   { href: "/", label: "Ghi độ" },
   { href: "/thu", label: "Quản lý thu" },
+  { href: "/thu/so-thu", label: "Sổ thu" },
   { href: "/chi", label: "Quản lý chi" },
   { href: "/tong-hop", label: "Tổng hợp" },
 ];

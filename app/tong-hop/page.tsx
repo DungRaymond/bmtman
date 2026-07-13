@@ -2,7 +2,6 @@ import {
   createMonthlySnapshotAction,
   generateMonthlyFixedFeesAction,
 } from "@/app/actions";
-import { AdminPinField } from "@/app/components/AdminPinField";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import {
   currentMonthValue,
@@ -221,7 +220,6 @@ export default async function TongHopPage({ searchParams }: PageProps) {
             <label>Tháng</label>
             <input name="period_month" type="month" defaultValue={month} required />
           </div>
-          <AdminPinField />
           <button className="btn-primary" type="submit">
             Tạo phí 500k cho thành viên cố định
           </button>
@@ -280,7 +278,6 @@ export default async function TongHopPage({ searchParams }: PageProps) {
             <label>Ghi chú</label>
             <input name="note" />
           </div>
-          <AdminPinField />
           <button className="btn-primary" type="submit">
             Lưu bản chốt
           </button>

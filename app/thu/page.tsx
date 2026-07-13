@@ -7,8 +7,9 @@ import {
 } from "@/app/actions";
 import { ManualChargeForm } from "@/app/thu/ManualChargeForm";
 import { WalkinReceivableForm } from "@/app/thu/WalkinReceivableForm";
-import { AdminPinField } from "@/app/components/AdminPinField";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
+import { loginThuAction } from "@/app/thu/auth-actions";
+import { isThuRouteAuthenticated } from "@/lib/thuAuth";
 import {
   chargeTypeLabels,
   currentMonthValue,
@@ -30,6 +31,10 @@ import {
 } from "@/lib/finance";
 
 export const dynamic = "force-dynamic";
+
+type PageProps = {
+  searchParams?: Promise<{ auth?: string; next?: string }>;
+};
 
 const walkinTypeLabels: Record<string, string> = {
   session_fee: "Vãng lai theo buổi",
@@ -60,7 +65,42 @@ function groupPaymentsByMember(payments: MonthlyMemberPayment[]) {
   );
 }
 
-export default async function ThuPage() {
+export default async function ThuPage({ searchParams }: PageProps) {
+  const params = (await searchParams) || {};
+  if (!(await isThuRouteAuthenticated())) {
+    return (
+      <main className="thu-auth-page">
+        <section className="thu-auth-panel">
+          <div>
+            <h1>Xác thực quản lý thu</h1>
+            <p>Nhập mã bảo mật để mở trang quản lý thu.</p>
+          </div>
+          <form action={loginThuAction} className="stack-form">
+            <input
+              type="hidden"
+              name="next"
+              value={params.next?.startsWith("/thu") ? params.next : "/thu"}
+            />
+            <div>
+              <label>Mã bảo mật</label>
+              <input
+                name="access_pin"
+                type="password"
+                autoComplete="current-password"
+                autoFocus
+                required
+              />
+            </div>
+            {params.auth === "invalid" && (
+              <p className="thu-auth-error">Mã bảo mật không đúng.</p>
+            )}
+            <button className="btn-primary" type="submit">Mở quản lý thu</button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
   const month = currentMonthValue();
   const today = todayInputValue();
   const [
@@ -124,7 +164,6 @@ export default async function ThuPage() {
         <WalkinReceivableForm
           initialDate={today}
           initialAmount={walkinFee}
-          adminPinField={<AdminPinField />}
         />
         <div className="form-section-divider">
           <div className="section-title">Cố định cũ đến giao lưu</div>
@@ -148,7 +187,6 @@ export default async function ThuPage() {
               <label>Mức thu</label>
               <input value={`${money(formerFixedFee)} / buổi`} readOnly />
             </div>
-            <AdminPinField />
             <button
               className="btn-primary"
               type="submit"
@@ -169,7 +207,6 @@ export default async function ThuPage() {
             label,
           }))}
           initialDate={todayInputValue()}
-          adminPinField={<AdminPinField />}
         />
       </section>
 
@@ -207,7 +244,6 @@ export default async function ThuPage() {
                     defaultValue={walkinOutstandingAmount(walkin)}
                   />
                 </div>
-                <AdminPinField />
                 <button className="btn-primary small-btn" type="submit">
                   Xác nhận thu
                 </button>
@@ -288,7 +324,6 @@ export default async function ThuPage() {
                 <label>Ghi chú</label>
                 <input name="note" />
               </div>
-              <AdminPinField />
               <button className="btn-primary small-btn" type="submit">
                 Xác nhận thu
               </button>

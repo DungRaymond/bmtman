@@ -222,7 +222,7 @@ export async function saveScoreSetAction(formData: FormData) {
 }
 
 export async function unlockScoreSetAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const date = requiredString(formData, "date");
   const setId = requiredString(formData, "set_id");
   const card = await getDailyScorecard(date);
@@ -257,7 +257,7 @@ export async function deleteScoreSetAction(formData: FormData) {
 }
 
 export async function settleDailyScorecardAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const date = requiredString(formData, "date");
   const card = await getDailyScorecard(date);
   if (card.settled_at) {
@@ -380,7 +380,7 @@ export async function settleDailyScorecardAction(formData: FormData) {
 }
 
 export async function setSessionCancelledAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const date = requiredString(formData, "date");
   const sessionId = intValue(formData, "session_id");
   const isCancelled = formData.get("is_cancelled") === "1" ? 1 : 0;
@@ -395,6 +395,7 @@ export async function setSessionCancelledAction(formData: FormData) {
 }
 
 export async function addMemberToSessionAction(formData: FormData) {
+  await assertAdmin();
   const date = requiredString(formData, "date");
   const session = await ensureSession(date);
   const memberId = intValue(formData, "member_id");
@@ -436,6 +437,7 @@ export async function addMemberToSessionAction(formData: FormData) {
 }
 
 export async function updateSessionStakeAction(formData: FormData) {
+  await assertAdmin();
   const date = requiredString(formData, "date");
   const id = intValue(formData, "id");
   const memberId = intValue(formData, "member_id");
@@ -464,6 +466,7 @@ export async function updateSessionStakeAction(formData: FormData) {
 }
 
 export async function addWalkinAction(formData: FormData) {
+  await assertAdmin();
   const date = requiredString(formData, "date");
   const session = await ensureSession(date);
   const walkinNumber = intValue(formData, "walkin_number");
@@ -487,7 +490,7 @@ export async function addWalkinAction(formData: FormData) {
 }
 
 export async function createWalkinReceivableAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const date = requiredString(formData, "date");
   const session = await ensureSession(date);
   const walkinCount = intValue(formData, "walkin_count", 1);
@@ -506,35 +509,12 @@ export async function createWalkinReceivableAction(formData: FormData) {
     throw new Error("Mức thu vãng lai phải là bội số của 5.000đ.");
   }
 
-  const supabase = getSupabaseAdmin();
-  async function insertWalkins() {
-    const { data: latest, error: latestError } = await supabase
-      .from("session_walkins")
-      .select("walkin_number")
-      .eq("session_id", session.session_id)
-      .order("walkin_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (latestError) throw latestError;
-
-    const firstWalkinNumber = (latest?.walkin_number || 0) + 1;
-    const rows = Array.from({ length: walkinCount }, (_, index) => ({
-      session_id: session.session_id,
-      walkin_number: firstWalkinNumber + index,
-      walkin_name: walkinName,
-      fee_type: "session_fee",
-      amount_expected: amount,
-      is_paid: 0,
-      amount_collected: null,
-    }));
-
-    return supabase.from("session_walkins").insert(rows);
-  }
-
-  let { error } = await insertWalkins();
-  if (error?.code === "23505") {
-    ({ error } = await insertWalkins());
-  }
+  const { error } = await getSupabaseAdmin().rpc("create_walkin_receivables", {
+    p_session_id: session.session_id,
+    p_walkin_count: walkinCount,
+    p_walkin_name: walkinName,
+    p_amount: amount,
+  });
   if (error) {
     throw new Error(`Không tạo được khoản vãng lai (${error.code}): ${error.message}`);
   }
@@ -545,7 +525,7 @@ export async function createWalkinReceivableAction(formData: FormData) {
 }
 
 export async function createFormerFixedReceivableAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const date = requiredString(formData, "date");
   const memberId = intValue(formData, "member_id");
   if (memberId <= 0) throw new Error("Thành viên không hợp lệ.");
@@ -574,7 +554,7 @@ export async function createFormerFixedReceivableAction(formData: FormData) {
 }
 
 export async function toggleWalkinPaidAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const date = requiredString(formData, "date");
   const id = intValue(formData, "id");
   const { data, error: findError } = await getSupabaseAdmin()
@@ -599,7 +579,7 @@ export async function toggleWalkinPaidAction(formData: FormData) {
 }
 
 export async function recordWalkinPaymentAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const id = intValue(formData, "id");
   const amountCollected = intValue(formData, "amount_collected");
   if (amountCollected <= 0) throw new Error("Số tiền thu phải lớn hơn 0.");
@@ -619,6 +599,7 @@ export async function recordWalkinPaymentAction(formData: FormData) {
 }
 
 export async function addWalkinStakeFeeAction(formData: FormData) {
+  await assertAdmin();
   const date = requiredString(formData, "date");
   const session = await ensureSession(date);
   const walkinNumber = intValue(formData, "walkin_number");
@@ -644,7 +625,7 @@ export async function addWalkinStakeFeeAction(formData: FormData) {
 }
 
 export async function createManualChargeAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const memberId = intValue(formData, "member_id");
   const chargeType = requiredString(formData, "charge_type");
   const amount = intValue(formData, "amount");
@@ -676,7 +657,7 @@ export async function createManualChargeAction(formData: FormData) {
 }
 
 export async function recordPaymentAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const chargeId = intValue(formData, "charge_id");
   const amountPaid = intValue(formData, "amount_paid");
   if (amountPaid <= 0) throw new Error("Số tiền thu phải lớn hơn 0.");
@@ -701,7 +682,7 @@ export async function recordPaymentAction(formData: FormData) {
 }
 
 export async function deleteChargeAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const chargeId = intValue(formData, "charge_id");
   const supabase = getSupabaseAdmin();
 
@@ -723,7 +704,7 @@ export async function deleteChargeAction(formData: FormData) {
 }
 
 export async function deleteWalkinReceivableAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const id = intValue(formData, "id");
   const { error } = await getSupabaseAdmin()
     .from("session_walkins")
@@ -737,7 +718,7 @@ export async function deleteWalkinReceivableAction(formData: FormData) {
 }
 
 export async function createExpenseAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const expenseDate = requiredString(formData, "expense_date");
   const category = requiredString(formData, "category");
   const amount = intValue(formData, "amount");
@@ -757,7 +738,7 @@ export async function createExpenseAction(formData: FormData) {
 }
 
 export async function createMonthlySnapshotAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const periodMonth = requiredString(formData, "period_month");
   const openingBalance = intValue(formData, "opening_balance");
   const closingBalanceRaw = String(formData.get("closing_balance") || "").trim();
@@ -779,7 +760,7 @@ export async function createMonthlySnapshotAction(formData: FormData) {
 }
 
 export async function generateMonthlyFixedFeesAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const periodMonth = requiredString(formData, "period_month");
   const applyDate = `${periodMonth}-01`;
   const fixedFee = await getFeeAmount("fixed", "base_fee", applyDate);
@@ -817,7 +798,7 @@ export async function generateMonthlyFixedFeesAction(formData: FormData) {
 }
 
 export async function saveMemberFeeSummariesAction(formData: FormData) {
-  assertAdmin(formData);
+  await assertAdmin();
   const periodMonth = requiredString(formData, "period_month");
   const cards = await getMonthlyMemberCards(periodMonth);
   const rows = cards.map((card) => {

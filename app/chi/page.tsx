@@ -1,5 +1,4 @@
 import { createExpenseAction } from "@/app/actions";
-import { AdminPinField } from "@/app/components/AdminPinField";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import {
   currentMonthValue,
@@ -80,7 +79,6 @@ export default async function ChiPage({ searchParams }: PageProps) {
             <label>Mô tả</label>
             <input name="description" placeholder="VD: tiền sân tuần 1" />
           </div>
-          <AdminPinField />
           <button className="btn-primary" type="submit">
             Ghi khoản chi
           </button>

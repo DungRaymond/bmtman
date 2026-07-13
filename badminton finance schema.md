@@ -71,10 +71,23 @@ CREATE TABLE session_collectors (
 -- mỗi nút tự thêm 1 dòng mặc định 80k/chưa thu; bấm lại để tick đã thu tại
 -- chỗ. Nhờ đánh theo từng người, buổi đó ai đã thu/ai chưa vẫn thấy được
 -- ngay trong ngày, dù không cần biết TÊN của họ là gì.
+-- Hồ sơ nhẹ cho vãng lai có tên và quay lại nhiều lần.
+-- Tên được chuẩn hóa để "Anh A" và "  anh   a " nhận diện là cùng một người.
+CREATE TABLE walkin_people (
+    person_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    display_name     TEXT NOT NULL,
+    normalized_name  TEXT NOT NULL UNIQUE,
+    visit_count      INTEGER NOT NULL DEFAULT 1,
+    first_visit_date DATE NOT NULL,
+    last_visit_date  DATE NOT NULL
+);
+
 CREATE TABLE session_walkins (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id      INTEGER NOT NULL REFERENCES sessions(session_id),
     walkin_number   INTEGER NOT NULL,                 -- 1, 2, 3... thứ tự trong buổi (UI: nút "Vãng lai N")
+    walkin_name     TEXT,
+    walkin_person_id INTEGER REFERENCES walkin_people(person_id),
     fee_type        TEXT NOT NULL CHECK (fee_type IN ('session_fee','stake_fee')),
                         -- session_fee = phí giao lưu 80k/người (mặc định khi bấm nút)
                         -- stake_fee   = tiền độ phát sinh riêng (nếu có), thêm dòng riêng, không gộp

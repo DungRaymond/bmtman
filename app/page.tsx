@@ -5,7 +5,6 @@ import {
   settleDailyScorecardAction,
   unlockScoreSetAction,
 } from "@/app/actions";
-import { AdminPinField } from "@/app/components/AdminPinField";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import {
   formatDateVN,
@@ -139,7 +138,6 @@ function ScoreSetCard({
           <form className="unlock-score-form" action={unlockScoreSetAction}>
             <input type="hidden" name="date" value={date} />
             <input type="hidden" name="set_id" value={set.id} />
-            <AdminPinField />
             <button className="btn-secondary" type="submit">
               Mở khóa để sửa
             </button>
@@ -306,7 +304,6 @@ export default async function Home({ searchParams }: PageProps) {
         </div>
         <form className="score-settle-form" action={settleDailyScorecardAction}>
           <input type="hidden" name="date" value={date} />
-          <AdminPinField />
           <button className="btn-primary" type="submit" disabled={!canSettle}>
             Chốt sổ độ của ngày
           </button>

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { saveMemberFeeSummariesAction } from "@/app/actions";
-import { AdminPinField } from "@/app/components/AdminPinField";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import {
   currentMonthValue,
@@ -104,7 +103,6 @@ export default async function MemfeeCardsPage({ searchParams }: PageProps) {
         </div>
         <form className="inline-form" action={saveMemberFeeSummariesAction}>
           <input type="hidden" name="period_month" value={month} />
-          <AdminPinField />
           <button className="btn-primary" type="submit">Cập nhật thẻ</button>
         </form>
       </section>
