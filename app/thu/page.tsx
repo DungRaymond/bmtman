@@ -167,10 +167,16 @@ export default async function ThuPage({ searchParams }: PageProps) {
         />
         <div className="form-section-divider">
           <div className="section-title">Cố định cũ đến giao lưu</div>
-          <form className="grid3" action={createFormerFixedReceivableAction}>
-            <div>
-              <label>Ngày buổi chơi</label>
-              <input name="date" type="date" defaultValue={today} required />
+          <form className="compact-receivable-form" action={createFormerFixedReceivableAction}>
+            <div className="receivable-date-amount-row">
+              <div>
+                <label>Ngày</label>
+                <input name="date" type="date" defaultValue={today} required />
+              </div>
+              <div>
+                <label>Mức thu</label>
+                <input value={`${money(formerFixedFee)} / buổi`} readOnly />
+              </div>
             </div>
             <div>
               <label>Thành viên cố định cũ</label>
@@ -182,10 +188,6 @@ export default async function ThuPage({ searchParams }: PageProps) {
                   </option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label>Mức thu</label>
-              <input value={`${money(formerFixedFee)} / buổi`} readOnly />
             </div>
             <button
               className="btn-primary"

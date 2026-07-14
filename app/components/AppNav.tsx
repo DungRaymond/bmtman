@@ -1,5 +1,8 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const items = [
   { href: "/", label: "Ghi độ" },
@@ -10,6 +13,15 @@ const items = [
 ];
 
 export function AppNav() {
+  const pathname = usePathname();
+  const activeHref = items
+    .filter((item) =>
+      item.href === "/"
+        ? pathname === "/"
+        : pathname === item.href || pathname.startsWith(`${item.href}/`)
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+
   return (
     <header className="app-shell-header">
       <div className="brand">
@@ -21,7 +33,12 @@ export function AppNav() {
       </div>
       <nav className="nav-tabs" aria-label="Điều hướng chính">
         {items.map((item) => (
-          <Link key={item.href} href={item.href}>
+          <Link
+            className={activeHref === item.href ? "active" : undefined}
+            aria-current={activeHref === item.href ? "page" : undefined}
+            key={item.href}
+            href={item.href}
+          >
             {item.label}
           </Link>
         ))}

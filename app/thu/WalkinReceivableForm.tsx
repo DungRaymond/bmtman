@@ -18,54 +18,59 @@ export function WalkinReceivableForm({
   const [walkinCount, setWalkinCount] = useState(1);
 
   return (
-    <form className="grid3" action={createWalkinReceivableAction}>
-      <div>
-        <label>Ngày buổi chơi</label>
-        <input name="date" type="date" defaultValue={initialDate} required />
+    <form className="compact-receivable-form" action={createWalkinReceivableAction}>
+      <div className="receivable-date-amount-row">
+        <div>
+          <label>Ngày</label>
+          <input name="date" type="date" defaultValue={initialDate} required />
+        </div>
+        <div>
+          <label>Mức thu</label>
+          <div className="amount-stepper compact-amount-stepper">
+            <button
+              type="button"
+              title="Giảm 5.000đ"
+              aria-label="Giảm 5.000đ"
+              onClick={() => setAmount((value) => Math.max(AMOUNT_STEP, value - AMOUNT_STEP))}
+            >
+              -
+            </button>
+            <output>{amount.toLocaleString("vi-VN")}đ</output>
+            <button
+              type="button"
+              title="Tăng 5.000đ"
+              aria-label="Tăng 5.000đ"
+              onClick={() => setAmount((value) => value + AMOUNT_STEP)}
+            >
+              +
+            </button>
+            <input type="hidden" name="amount" value={amount} />
+          </div>
+        </div>
       </div>
-      <div>
-        <label>Số người vãng lai</label>
-        <input
-          name="walkin_count"
-          type="number"
-          min="1"
-          max="30"
-          value={walkinCount}
-          onChange={(event) => setWalkinCount(Number(event.target.value))}
-          required
-        />
-      </div>
-      <div>
-        <label>Tên thành viên vãng lai (không bắt buộc)</label>
-        <input
-          name="walkin_name"
-          type="text"
-          maxLength={80}
-          placeholder={walkinCount > 1 ? "Chỉ nhập tên khi tạo 1 người" : "Có thể để trống"}
-          disabled={walkinCount > 1}
-        />
-      </div>
-      <div>
-        <label>Mức thu</label>
-        <div className="amount-stepper">
-          <button
-            type="button"
-            title="Giảm 5.000đ"
-            aria-label="Giảm 5.000đ"
-            onClick={() => setAmount((value) => Math.max(AMOUNT_STEP, value - AMOUNT_STEP))}
-          >
-            -
-          </button>
-          <output>{amount.toLocaleString("vi-VN")}đ</output>
-          <button
-            type="button"
-            title="Tăng 5.000đ"
-            aria-label="Tăng 5.000đ"
-            onClick={() => setAmount((value) => value + AMOUNT_STEP)}
-          >
-            +
-          </button>
-          <input type="hidden" name="amount" value={amount} />
+      <div className="receivable-name-count-row">
+        <div>
+          <label>Tên vãng lai (không bắt buộc)</label>
+          <input
+            name="walkin_name"
+            type="text"
+            maxLength={80}
+            placeholder={walkinCount > 1 ? "Chỉ nhập tên khi tạo 1 người" : "Có thể để trống"}
+            disabled={walkinCount > 1}
+          />
+        </div>
+        <div className="receivable-count-field">
+          <label>SL</label>
+          <input
+            name="walkin_count"
+            type="number"
+            min="1"
+            max="30"
+            value={walkinCount}
+            onChange={(event) => setWalkinCount(Number(event.target.value))}
+            aria-label="Số người vãng lai"
+            required
+          />
         </div>
       </div>
       <button className="btn-primary" type="submit">

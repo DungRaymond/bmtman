@@ -86,6 +86,23 @@ code {
   font-weight: 700;
 }
 
+.nav-tabs a:hover {
+  background: #26364c;
+  border-color: #475569;
+}
+
+.nav-tabs a.active {
+  background: #14532d;
+  border-color: #22c55e;
+  color: #dcfce7;
+  box-shadow: inset 0 -2px 0 #4ade80;
+}
+
+.nav-tabs a:focus-visible {
+  outline: 3px solid #facc15;
+  outline-offset: 2px;
+}
+
 .page-title {
   display: flex;
   justify-content: space-between;
@@ -1587,9 +1604,52 @@ button {
 }
 
 .form-section-divider {
-  margin-top: 20px;
-  padding-top: 18px;
+  margin-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid #334155;
+}
+
+.compact-receivable-form {
+  display: grid;
+  gap: 10px;
+}
+
+.receivable-date-amount-row,
+.receivable-name-count-row {
+  display: grid;
+  gap: 8px;
+  align-items: end;
+}
+
+.receivable-date-amount-row {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+
+.receivable-name-count-row {
+  grid-template-columns: minmax(0, 9fr) minmax(0, 1fr);
+}
+
+.compact-amount-stepper {
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+}
+
+.compact-amount-stepper output {
+  min-width: 0;
+  font-size: 13px;
+}
+
+.receivable-count-field {
+  min-width: 0;
+}
+
+.receivable-count-field label {
+  text-align: center;
+}
+
+.receivable-count-field input {
+  min-width: 0;
+  padding-inline: 2px;
+  text-align: center;
 }
 
 .table-list {
