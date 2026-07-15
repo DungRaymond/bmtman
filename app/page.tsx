@@ -106,6 +106,34 @@ export default async function Home({ searchParams }: PageProps) {
         </form>
       </section>
 
+      <ScoreEntryCard
+        date={date}
+        suggestions={playerSuggestions(activeMembers, walkinNames)}
+        disabled={isSettled || sets.length >= 12}
+      />
+
+      <section className="score-history">
+        <div className="score-history-title">
+          <span>Đã ghi trong ngày</span>
+          <strong>{sets.length}/12</strong>
+        </div>
+        {sets.length === 0 && <div className="empty">Chưa có lượt độ nào.</div>}
+        {sets.map((set, index) => (
+          <div className="score-history-row" key={set.id}>
+            <span className="score-history-index">#{index + 1}</span>
+            <div className={set.winner === "A" ? "winner" : ""}>
+              <small>BÊN A</small>
+              <strong>{sideLabel(set.players.slice(0, 2), members)}</strong>
+            </div>
+            <b>{money(set.amount)}</b>
+            <div className={set.winner === "B" ? "winner" : ""}>
+              <small>BÊN B</small>
+              <strong>{sideLabel(set.players.slice(2, 4), members)}</strong>
+            </div>
+          </div>
+        ))}
+      </section>
+
       <section className="score-monthly-stake">
         <div className="score-monthly-stake-head">
           <div>
@@ -160,34 +188,6 @@ export default async function Home({ searchParams }: PageProps) {
             })}
           </div>
         )}
-      </section>
-
-      <ScoreEntryCard
-        date={date}
-        suggestions={playerSuggestions(activeMembers, walkinNames)}
-        disabled={isSettled || sets.length >= 12}
-      />
-
-      <section className="score-history">
-        <div className="score-history-title">
-          <span>Đã ghi trong ngày</span>
-          <strong>{sets.length}/12</strong>
-        </div>
-        {sets.length === 0 && <div className="empty">Chưa có lượt độ nào.</div>}
-        {sets.map((set, index) => (
-          <div className="score-history-row" key={set.id}>
-            <span className="score-history-index">#{index + 1}</span>
-            <div className={set.winner === "A" ? "winner" : ""}>
-              <small>BÊN A</small>
-              <strong>{sideLabel(set.players.slice(0, 2), members)}</strong>
-            </div>
-            <b>{money(set.amount)}</b>
-            <div className={set.winner === "B" ? "winner" : ""}>
-              <small>BÊN B</small>
-              <strong>{sideLabel(set.players.slice(2, 4), members)}</strong>
-            </div>
-          </div>
-        ))}
       </section>
 
       <section className="score-settle-card">
