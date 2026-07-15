@@ -18,7 +18,7 @@ export function WalkinReceivableForm({
   const [walkinCount, setWalkinCount] = useState(1);
 
   return (
-    <form className="compact-receivable-form" action={createWalkinReceivableAction}>
+    <form id="walkin-receivable-form" className="compact-receivable-form" action={createWalkinReceivableAction}>
       <div className="receivable-date-amount-row">
         <div>
           <label>Ngày</label>
@@ -73,9 +73,6 @@ export function WalkinReceivableForm({
           />
         </div>
       </div>
-      <button className="btn-primary" type="submit">
-        Tạo {walkinCount || 0} khoản vãng lai
-      </button>
     </form>
   );
 }

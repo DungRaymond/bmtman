@@ -1,11 +1,11 @@
 import {
-  createFormerFixedReceivableAction,
   deleteChargeAction,
   deleteWalkinReceivableAction,
   recordPaymentAction,
   recordWalkinPaymentAction,
 } from "@/app/actions";
 import { ManualChargeForm } from "@/app/thu/ManualChargeForm";
+import { FormerFixedReceivableForm } from "@/app/thu/FormerFixedReceivableForm";
 import { WalkinReceivableForm } from "@/app/thu/WalkinReceivableForm";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import { loginThuAction } from "@/app/thu/auth-actions";
@@ -23,7 +23,6 @@ import {
   getWalkinReceivables,
   money,
   outstandingAmount,
-  paidAmount,
   todayInputValue,
   walkinOutstandingAmount,
   walkinSessionDate,
@@ -34,11 +33,6 @@ export const dynamic = "force-dynamic";
 
 type PageProps = {
   searchParams?: Promise<{ auth?: string; next?: string }>;
-};
-
-const walkinTypeLabels: Record<string, string> = {
-  session_fee: "Vãng lai theo buổi",
-  stake_fee: "Tiền độ vãng lai",
 };
 
 function paymentCharge(payment: MonthlyMemberPayment) {
@@ -128,6 +122,7 @@ export default async function ThuPage({ searchParams }: PageProps) {
   const paymentGroups = groupPaymentsByMember(memberPayments);
   const unpaidCharges = charges.filter((charge) => outstandingAmount(charge) > 0);
   const unpaidWalkins = walkins.filter((walkin) => walkinOutstandingAmount(walkin) > 0);
+  const memberDebtRows = balances.filter((row) => row.outstanding_debt > 0);
   const totalMemberDebt = balances.reduce((sum, row) => sum + row.outstanding_debt, 0);
   const totalWalkinDebt = unpaidWalkins.reduce(
     (sum, walkin) => sum + walkinOutstandingAmount(walkin),
@@ -145,63 +140,114 @@ export default async function ThuPage({ searchParams }: PageProps) {
       </section>
 
       <section className="summary-grid">
-        <div className="metric">
-          <span>Nợ thành viên</span>
-          <strong>{money(totalMemberDebt)}</strong>
-        </div>
-        <div className="metric">
-          <span>Khoản thành viên chưa thu</span>
-          <strong>{unpaidCharges.length}</strong>
-        </div>
-        <div className="metric">
-          <span>Vãng lai chưa thu</span>
-          <strong>{money(totalWalkinDebt)}</strong>
-        </div>
+        <details className="metric metric-accordion">
+          <summary>
+            <div>
+              <span>Nợ thành viên</span>
+              <strong>{money(totalMemberDebt)}</strong>
+            </div>
+          </summary>
+          <div className="metric-details">
+            {memberDebtRows.length === 0 && <div className="empty">Không có thành viên đang nợ.</div>}
+            {memberDebtRows.map((row) => (
+              <div className="metric-detail-row" key={row.member_id}>
+                <span>{row.name}</span>
+                <strong>{money(row.outstanding_debt)}</strong>
+              </div>
+            ))}
+          </div>
+        </details>
+        <details className="metric metric-accordion">
+          <summary>
+            <div>
+              <span>Khoản thành viên chưa thu</span>
+              <strong>{unpaidCharges.length}</strong>
+            </div>
+          </summary>
+          <div className="metric-details">
+            {unpaidCharges.length === 0 && <div className="empty">Không còn khoản chưa thu.</div>}
+            {unpaidCharges.map((charge) => {
+              const session = Array.isArray(charge.sessions)
+                ? charge.sessions[0]
+                : charge.sessions;
+              return (
+                <div className="metric-detail-row" key={charge.charge_id}>
+                  <span>
+                    {charge.members?.name || "Không rõ"}
+                    {session?.session_date ? ` - ${formatDateVN(session.session_date)}` : ""}
+                  </span>
+                  <strong>{money(outstandingAmount(charge))}</strong>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+        <details className="metric metric-accordion">
+          <summary>
+            <div>
+              <span>Vãng lai chưa thu</span>
+              <strong>{money(totalWalkinDebt)}</strong>
+            </div>
+          </summary>
+          <div className="metric-details">
+            {unpaidWalkins.length === 0 && <div className="empty">Không còn khoản vãng lai chưa thu.</div>}
+            {unpaidWalkins.map((walkin) => {
+              const sessionDate = walkinSessionDate(walkin);
+              return (
+                <div className="metric-detail-row" key={walkin.id}>
+                  <span>
+                    {walkin.walkin_name || `Vãng lai #${walkin.walkin_number}`}
+                    {sessionDate ? ` - ${formatDateVN(sessionDate)}` : ""}
+                  </span>
+                  <strong>{money(walkinOutstandingAmount(walkin))}</strong>
+                </div>
+              );
+            })}
+          </div>
+        </details>
       </section>
 
       <section className="card">
-        <div className="section-title">Tạo khoản thu vãng lai theo buổi</div>
+        <div className="form-title-action-row">
+          <div className="section-title">Vãng lai theo buổi</div>
+          <button className="btn-primary small-btn" type="submit" form="walkin-receivable-form">
+            Tạo
+          </button>
+        </div>
         <WalkinReceivableForm
           initialDate={today}
           initialAmount={walkinFee}
         />
         <div className="form-section-divider">
-          <div className="section-title">Cố định cũ đến giao lưu</div>
-          <form className="compact-receivable-form" action={createFormerFixedReceivableAction}>
-            <div className="receivable-date-amount-row">
-              <div>
-                <label>Ngày</label>
-                <input name="date" type="date" defaultValue={today} required />
-              </div>
-              <div>
-                <label>Mức thu</label>
-                <input value={`${money(formerFixedFee)} / buổi`} readOnly />
-              </div>
-            </div>
-            <div>
-              <label>Thành viên cố định cũ</label>
-              <select name="member_id" required>
-                <option value="">Chọn thành viên</option>
-                {formerFixedMembers.map((row) => (
-                  <option key={row.member_id} value={row.member_id}>
-                    {row.member.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="form-title-action-row">
+            <div className="section-title">Cố định cũ đến giao lưu</div>
             <button
-              className="btn-primary"
+              className="btn-primary small-btn"
               type="submit"
+              form="former-fixed-receivable-form"
               disabled={formerFixedMembers.length === 0}
             >
-              Tạo khoản giao lưu
+              Tạo
             </button>
-          </form>
+          </div>
+          <FormerFixedReceivableForm
+            members={formerFixedMembers.map((row) => ({
+              member_id: row.member_id,
+              name: row.member.name,
+            }))}
+            initialDate={today}
+            initialAmount={formerFixedFee}
+          />
         </div>
       </section>
 
       <section className="card">
-        <div className="section-title">Tạo khoản phải thu thủ công</div>
+        <div className="form-title-action-row">
+          <div className="section-title">Tạo khoản phải thu thủ công</div>
+          <button className="btn-primary small-btn" type="submit" form="manual-charge-form">
+            Tạo
+          </button>
+        </div>
         <ManualChargeForm
           members={members}
           chargeTypes={Object.entries(chargeTypeLabels).map(([value, label]) => ({
@@ -228,14 +274,12 @@ export default async function ThuPage({ searchParams }: PageProps) {
               >
                 <input type="hidden" name="id" value={walkin.id} />
                 <div>
-                  <strong>
-                    {walkin.walkin_name || `Vãng lai #${walkin.walkin_number}`}
-                  </strong>
-                  <div className="muted">
-                    Vãng lai #{walkin.walkin_number} - {walkinTypeLabels[walkin.fee_type] || walkin.fee_type}
-                    {sessionDate ? ` - ${formatDateVN(sessionDate)}` : ""}
+                  <div className="payment-person-line">
+                    <strong>
+                      {walkin.walkin_name || `Vãng lai #${walkin.walkin_number}`}
+                    </strong>
+                    {sessionDate && <span className="muted">{formatDateVN(sessionDate)}</span>}
                   </div>
-                  <div className="muted">Phải thu {money(walkin.amount_expected)}</div>
                 </div>
                 <div>
                   <label>Số tiền thu</label>
@@ -246,16 +290,22 @@ export default async function ThuPage({ searchParams }: PageProps) {
                     defaultValue={walkinOutstandingAmount(walkin)}
                   />
                 </div>
-                <button className="btn-primary small-btn" type="submit">
-                  Xác nhận thu
-                </button>
-                <button
-                  className="btn-secondary small-btn"
-                  formAction={deleteWalkinReceivableAction}
-                  type="submit"
-                >
-                  Xóa
-                </button>
+                <div>
+                  <label>Ghi chú</label>
+                  <input name="note" defaultValue="Phí giao lưu buổi" />
+                </div>
+                <div className="pay-actions">
+                  <button className="btn-primary small-btn" type="submit">
+                    Xác nhận thu
+                  </button>
+                  <button
+                    className="btn-secondary small-btn"
+                    formAction={deleteWalkinReceivableAction}
+                    type="submit"
+                  >
+                    Xóa
+                  </button>
+                </div>
               </form>
             );
           })}
@@ -268,21 +318,25 @@ export default async function ThuPage({ searchParams }: PageProps) {
           {unpaidCharges.length === 0 && (
             <div className="empty">Không còn khoản thành viên chưa thu.</div>
           )}
-          {unpaidCharges.map((charge) => (
-            <form
-              className="data-row pay-row"
-              key={charge.charge_id}
-              action={recordPaymentAction}
-            >
+          {unpaidCharges.map((charge) => {
+            const session = Array.isArray(charge.sessions)
+              ? charge.sessions[0]
+              : charge.sessions;
+            return (
+              <form
+                className="data-row pay-row"
+                key={charge.charge_id}
+                action={recordPaymentAction}
+              >
               <input type="hidden" name="charge_id" value={charge.charge_id} />
+              <input type="hidden" name="paid_date" value={todayInputValue()} />
+              <input type="hidden" name="payment_method" value="bank_transfer" />
               <div>
-                <strong>{charge.members?.name || "Không rõ"}</strong>
-                <div className="muted">
-                  {chargeTypeLabels[charge.charge_type] || charge.charge_type}
-                  {charge.period_month ? ` - ${charge.period_month}` : ""}
-                </div>
-                <div className="muted">
-                  Đã thu {money(paidAmount(charge))} / {money(charge.amount)}
+                <div className="payment-person-line">
+                  <strong>{charge.members?.name || "Không rõ"}</strong>
+                  {session?.session_date && (
+                    <span className="muted">{formatDateVN(session.session_date)}</span>
+                  )}
                 </div>
               </div>
               <div>
@@ -295,49 +349,24 @@ export default async function ThuPage({ searchParams }: PageProps) {
                 />
               </div>
               <div>
-                <label>Ngày thu</label>
-                <input
-                  name="paid_date"
-                  type="date"
-                  defaultValue={todayInputValue()}
-                />
-              </div>
-              <div>
-                <label>Hình thức</label>
-                <select name="payment_method" defaultValue="bank_transfer">
-                  <option value="cash">Tiền mặt</option>
-                  <option value="bank_transfer">Chuyển khoản</option>
-                  <option value="e_wallet">Ví điện tử</option>
-                  <option value="other">Khác</option>
-                </select>
-              </div>
-              <div>
-                <label>Người ghi nhận</label>
-                <select name="recorded_by">
-                  <option value="">Không chọn</option>
-                  {members.map((member) => (
-                    <option key={member.member_id} value={member.member_id}>
-                      {member.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
                 <label>Ghi chú</label>
-                <input name="note" />
+                <input name="note" defaultValue="Phí giao lưu buổi" />
               </div>
-              <button className="btn-primary small-btn" type="submit">
-                Xác nhận thu
-              </button>
-              <button
-                className="btn-secondary small-btn"
-                formAction={deleteChargeAction}
-                type="submit"
-              >
-                Xóa
-              </button>
+              <div className="pay-actions">
+                <button className="btn-primary small-btn" type="submit">
+                  Xác nhận thu
+                </button>
+                <button
+                  className="btn-secondary small-btn"
+                  formAction={deleteChargeAction}
+                  type="submit"
+                >
+                  Xóa
+                </button>
+              </div>
             </form>
-          ))}
+            );
+          })}
         </div>
       </section>
 

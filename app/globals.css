@@ -166,6 +166,85 @@ code {
   color: #fca5a5;
 }
 
+.metric-accordion {
+  padding: 0;
+  overflow: hidden;
+}
+
+.metric-accordion > summary {
+  min-height: 76px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+}
+
+.metric-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.metric-accordion > summary::after {
+  content: "+";
+  color: #94a3b8;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.metric-accordion[open] > summary::after {
+  content: "-";
+}
+
+.metric-accordion > summary > div {
+  min-width: 0;
+}
+
+.metric-accordion > summary span {
+  color: #94a3b8;
+  font-size: 12px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.metric-accordion > summary strong {
+  font-size: 20px;
+  color: #f8fafc;
+}
+
+.metric-details {
+  display: grid;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  border-top: 1px solid #334155;
+}
+
+.metric-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #273449;
+}
+
+.metric-detail-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.metric-detail-row span {
+  min-width: 0;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.metric-detail-row strong {
+  flex: 0 0 auto;
+  color: #f8fafc;
+  font-size: 14px;
+}
+
 .summary-money-accordion {
   padding: 0;
   overflow: hidden;
@@ -1560,6 +1639,56 @@ button {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.manual-charge-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.manual-charge-member select {
+  text-align: left;
+}
+
+.manual-charge-member select.has-value {
+  text-align: right;
+}
+
+.manual-charge-member-amount,
+.manual-charge-triple {
+  display: grid;
+  gap: 12px;
+}
+
+.manual-charge-member-amount {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.manual-charge-triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.manual-charge-form > :last-child {
+  grid-column: 1 / -1;
+}
+
+.form-title-action-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+.form-title-action-row .section-title {
+  flex: 1 1 auto;
+  margin-bottom: 0;
+}
+
+.form-title-action-row .btn-primary {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 2px;
+}
+
 .span-2 {
   grid-column: span 2;
 }
@@ -1670,11 +1799,45 @@ button {
 }
 
 .pay-row {
-  grid-template-columns: minmax(190px, 1.4fr) repeat(6, minmax(120px, 1fr)) auto auto;
+  grid-template-columns: minmax(220px, 1.5fr) minmax(140px, 1fr) minmax(160px, 1fr) minmax(190px, 1fr);
 }
 
 .walkin-pay-row {
-  grid-template-columns: minmax(220px, 1.5fr) minmax(140px, 1fr) minmax(140px, 1fr) auto auto;
+  grid-template-columns: minmax(220px, 1.5fr) minmax(140px, 1fr) minmax(160px, 1fr) minmax(190px, 1fr);
+}
+
+.payment-person-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  white-space: nowrap;
+}
+
+.payment-person-line strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.payment-person-line .muted {
+  flex: 0 0 auto;
+  color: #c084fc;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pay-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+  gap: 8px;
+  align-self: end;
+  width: 100%;
+}
+
+.pay-actions > button {
+  width: 100%;
 }
 
 .charge-delete-row {

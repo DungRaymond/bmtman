@@ -107,6 +107,7 @@ export type Charge = {
   note: string | null;
   members: Member | null;
   payments?: { amount_paid: number }[];
+  sessions?: { session_date: string } | { session_date: string }[] | null;
 };
 
 export type MonthlyMemberPayment = {
@@ -687,7 +688,7 @@ export async function getCharges() {
   if (!hasServerSupabaseConfig) return [];
   const { data, error } = await getSupabaseAdmin()
     .from("charges")
-    .select("*,members(member_id,name,joined_date,note),payments(amount_paid)")
+    .select("*,members(member_id,name,joined_date,note),payments(amount_paid),sessions(session_date)")
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) throw error;

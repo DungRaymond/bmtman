@@ -666,7 +666,9 @@ export async function createFormerFixedReceivableAction(formData: FormData) {
     throw new Error("Người được chọn không phải thành viên cố định cũ tại ngày này.");
   }
 
-  const amount = await getFeeAmount("former_fixed", "base_fee", date);
+  const configuredAmount = await getFeeAmount("former_fixed", "base_fee", date);
+  const requestedAmount = intValue(formData, "amount");
+  const amount = requestedAmount > 0 ? requestedAmount : configuredAmount;
   if (amount <= 0) throw new Error("Chưa cấu hình phí giao lưu cho cố định cũ.");
 
   const session = await ensureSession(date);
@@ -714,12 +716,14 @@ export async function recordWalkinPaymentAction(formData: FormData) {
   const id = intValue(formData, "id");
   const amountCollected = intValue(formData, "amount_collected");
   if (amountCollected <= 0) throw new Error("Số tiền thu phải lớn hơn 0.");
+  const note = String(formData.get("note") || "").trim() || null;
 
   const { error } = await getSupabaseAdmin()
     .from("session_walkins")
     .update({
       is_paid: 1,
       amount_collected: amountCollected,
+      note,
     })
     .eq("id", id);
   if (error) throw error;
