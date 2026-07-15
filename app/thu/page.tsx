@@ -140,66 +140,60 @@ export default async function ThuPage({ searchParams }: PageProps) {
       </section>
 
       <section className="summary-grid">
-        <details className="metric metric-accordion">
-          <summary>
-            <div>
-              <span>Nợ thành viên</span>
-              <strong>{money(totalMemberDebt)}</strong>
-            </div>
+        <details className="received-member-card">
+          <summary className="received-member-summary">
+            <div><strong>Nợ thành viên</strong></div>
+            <b>{money(totalMemberDebt)}</b>
           </summary>
-          <div className="metric-details">
+          <div className="received-payment-list">
             {memberDebtRows.length === 0 && <div className="empty">Không có thành viên đang nợ.</div>}
             {memberDebtRows.map((row) => (
-              <div className="metric-detail-row" key={row.member_id}>
-                <span>{row.name}</span>
-                <strong>{money(row.outstanding_debt)}</strong>
+              <div className="received-payment-row" key={row.member_id}>
+                <div><strong>{row.name}</strong></div>
+                <b>{money(row.outstanding_debt)}</b>
               </div>
             ))}
           </div>
         </details>
-        <details className="metric metric-accordion">
-          <summary>
-            <div>
-              <span>Khoản thành viên chưa thu</span>
-              <strong>{unpaidCharges.length}</strong>
-            </div>
+        <details className="received-member-card">
+          <summary className="received-member-summary">
+            <div><strong>Khoản thành viên chưa thu</strong></div>
+            <b>{unpaidCharges.length}</b>
           </summary>
-          <div className="metric-details">
+          <div className="received-payment-list">
             {unpaidCharges.length === 0 && <div className="empty">Không còn khoản chưa thu.</div>}
             {unpaidCharges.map((charge) => {
               const session = Array.isArray(charge.sessions)
                 ? charge.sessions[0]
                 : charge.sessions;
               return (
-                <div className="metric-detail-row" key={charge.charge_id}>
-                  <span>
-                    {charge.members?.name || "Không rõ"}
-                    {session?.session_date ? ` - ${formatDateVN(session.session_date)}` : ""}
-                  </span>
-                  <strong>{money(outstandingAmount(charge))}</strong>
+                <div className="received-payment-row" key={charge.charge_id}>
+                  <div>
+                    <strong>{charge.members?.name || "Không rõ"}</strong>
+                    {session?.session_date && <span>{formatDateVN(session.session_date)}</span>}
+                  </div>
+                  <b>{money(outstandingAmount(charge))}</b>
                 </div>
               );
             })}
           </div>
         </details>
-        <details className="metric metric-accordion">
-          <summary>
-            <div>
-              <span>Vãng lai chưa thu</span>
-              <strong>{money(totalWalkinDebt)}</strong>
-            </div>
+        <details className="received-member-card">
+          <summary className="received-member-summary">
+            <div><strong>Vãng lai chưa thu</strong></div>
+            <b>{money(totalWalkinDebt)}</b>
           </summary>
-          <div className="metric-details">
+          <div className="received-payment-list">
             {unpaidWalkins.length === 0 && <div className="empty">Không còn khoản vãng lai chưa thu.</div>}
             {unpaidWalkins.map((walkin) => {
               const sessionDate = walkinSessionDate(walkin);
               return (
-                <div className="metric-detail-row" key={walkin.id}>
-                  <span>
-                    {walkin.walkin_name || `Vãng lai #${walkin.walkin_number}`}
-                    {sessionDate ? ` - ${formatDateVN(sessionDate)}` : ""}
-                  </span>
-                  <strong>{money(walkinOutstandingAmount(walkin))}</strong>
+                <div className="received-payment-row" key={walkin.id}>
+                  <div>
+                    <strong>{walkin.walkin_name || `Vãng lai #${walkin.walkin_number}`}</strong>
+                    {sessionDate && <span>{formatDateVN(sessionDate)}</span>}
+                  </div>
+                  <b>{money(walkinOutstandingAmount(walkin))}</b>
                 </div>
               );
             })}

@@ -3,8 +3,10 @@ import { ConfigWarning } from "@/app/components/ConfigWarning";
 import { ScoreEntryCard, type ScorePlayerSuggestion } from "@/app/ScoreEntryCard";
 import {
   formatDateVN,
+  currentMonthValue,
   getActiveMembers,
   getDailyScorecard,
+  getMonthlyStakePeople,
   getMembers,
   getNamedWalkinNames,
   money,
@@ -62,15 +64,29 @@ function sideLabel(players: ScorePlayer[], members: Member[]) {
 
 export default async function Home({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
+  const today = todayInputValue();
+  const currentMonth = currentMonthValue();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.date || "")
     ? params.date as string
-    : todayInputValue();
-  const [members, activeMembers, walkinNames, scorecard] = await Promise.all([
+    : today;
+  const [members, activeMembers, walkinNames, scorecard, rawMonthlyStakePeople] = await Promise.all([
     getMembers(),
     getActiveMembers(date),
     getNamedWalkinNames(),
     getDailyScorecard(date),
+    getMonthlyStakePeople(currentMonth),
   ]);
+  const monthlyStakePeople = rawMonthlyStakePeople
+    .map((person) => {
+      const days = person.days.filter((day) => day.date <= today);
+      return {
+        ...person,
+        days,
+        total: days.reduce((sum, day) => sum + day.total, 0),
+      };
+    })
+    .filter((person) => person.days.length > 0);
+  const monthlyStakeTotal = monthlyStakePeople.reduce((sum, person) => sum + person.total, 0);
   const sets = scorecard.payload.sets;
   const isSettled = !!scorecard.settled_at;
   const canSettle = sets.length > 0 && sets.every((set) => set.locked) && !isSettled;
@@ -88,6 +104,62 @@ export default async function Home({ searchParams }: PageProps) {
           <input type="date" name="date" defaultValue={date} />
           <button className="btn-secondary" type="submit">Xem ngày</button>
         </form>
+      </section>
+
+      <section className="score-monthly-stake">
+        <div className="score-monthly-stake-head">
+          <div>
+            <strong>Độ tháng này</strong>
+            <span>Từ đầu tháng đến hiện tại</span>
+          </div>
+          <b>{money(monthlyStakeTotal)}</b>
+        </div>
+        {monthlyStakePeople.length === 0 ? (
+          <div className="empty">Chưa có lượt độ nào trong tháng này.</div>
+        ) : (
+          <div className="stake-person-list">
+            {monthlyStakePeople.map((person) => {
+              const personTurns = person.days.reduce((sum, day) => sum + day.turns.length, 0);
+              return (
+                <details className="stake-person-card" key={person.key}>
+                  <summary className="stake-person-head">
+                    <div>
+                      <strong>{person.name}</strong>
+                      <span>{person.days.length} ngày · {personTurns} lượt</span>
+                    </div>
+                    <b>{money(person.total)}</b>
+                  </summary>
+                  <div className="stake-person-days">
+                    {person.days.map((day) => (
+                      <section className="stake-day-group" key={day.date}>
+                        <div className="stake-day-head">
+                          <div>
+                            <strong>{formatDateVN(day.date)}</strong>
+                            <span className={day.settled ? "settled" : "unsettled"}>
+                              {day.settled ? "Đã chốt" : "Chưa chốt"}
+                            </span>
+                          </div>
+                          <b>{money(day.total)}</b>
+                        </div>
+                        <div className="stake-turn-list">
+                          {day.turns.map((turn) => (
+                            <div className="stake-turn-row" key={`${day.date}:${turn.setId}`}>
+                              <div>
+                                <strong>Lượt {turn.setNumber} · Bên {turn.losingSide} thua</strong>
+                                {turn.winnerNames && <span>Thắng: {turn.winnerNames}</span>}
+                              </div>
+                              <b>{money(turn.amount)}</b>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       <ScoreEntryCard

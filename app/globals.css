@@ -139,6 +139,10 @@ code {
   margin-bottom: 16px;
 }
 
+.summary-grid .received-member-summary b {
+  color: #fb923c;
+}
+
 .metric {
   background: #1e293b;
   border: 1px solid #334155;
@@ -324,6 +328,23 @@ code {
   color: #cbd5e1;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.debt-summary-card .btn-primary {
+  min-width: 126px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(134, 239, 172, 0.5);
+  border-radius: 8px;
+  box-shadow: 0 5px 12px rgba(34, 197, 94, 0.18);
+  white-space: nowrap;
+}
+
+.debt-summary-card .btn-primary:hover {
+  background: #4ade80;
+  transform: translateY(-1px);
 }
 
 .member-debt-layout {
@@ -911,6 +932,45 @@ code {
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
   gap: 8px;
   width: min(100%, 360px);
+}
+
+.score-monthly-stake {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.score-monthly-stake-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.score-monthly-stake-head strong {
+  color: #f8fafc;
+  display: block;
+  font-size: 16px;
+}
+
+.score-monthly-stake-head span {
+  color: #94a3b8;
+  display: block;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.score-monthly-stake-head b {
+  color: #4ade80;
+  font-size: 20px;
+  white-space: nowrap;
+}
+
+.score-monthly-stake .stake-person-list {
+  gap: 8px;
 }
 
 .score-start-card,
@@ -1989,6 +2049,105 @@ button {
   border-top: 1px solid #334155;
 }
 
+.ledger-member-list {
+  display: grid;
+  gap: 10px;
+}
+
+.ledger-member-card {
+  background: #0f172a;
+  border: 1px solid #273449;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ledger-member-summary {
+  background: #142133;
+  padding: 13px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ledger-member-summary::-webkit-details-marker {
+  display: none;
+}
+
+.ledger-member-summary::before {
+  content: "+";
+  color: #94a3b8;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.ledger-member-card[open] .ledger-member-summary::before {
+  content: "-";
+}
+
+.ledger-member-summary strong {
+  color: #e2e8f0;
+  display: block;
+}
+
+.ledger-member-summary span {
+  color: #94a3b8;
+  display: block;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.ledger-member-summary b {
+  color: #4ade80;
+  white-space: nowrap;
+}
+
+.ledger-member-summary > b.partial {
+  color: #fb923c;
+}
+
+.ledger-member-summary > b.unpaid {
+  color: #f87171;
+}
+
+.ledger-member-summary > b.paid {
+  color: #4ade80;
+}
+
+.money-ratio {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.money-ratio em {
+  font-style: normal;
+}
+
+.money-ratio-paid.paid,
+.money-ratio-total {
+  color: #4ade80;
+}
+
+.money-ratio-paid.partial {
+  color: #fb923c;
+}
+
+.money-ratio-paid.unpaid {
+  color: #f87171;
+}
+
+.money-ratio-separator {
+  color: #94a3b8;
+}
+
+.ledger-member-charges {
+  border-top: 1px solid #334155;
+}
+
 .ledger-row {
   border-bottom: 1px solid #334155;
 }
@@ -2020,6 +2179,12 @@ button {
   min-width: 0;
   display: grid;
   gap: 4px;
+}
+
+.ledger-row > summary .ledger-charge-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .ledger-row > summary span {

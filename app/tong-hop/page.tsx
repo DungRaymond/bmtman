@@ -3,11 +3,11 @@ import {
   generateMonthlyFixedFeesAction,
 } from "@/app/actions";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
+import { MoneyRatio } from "@/app/components/MoneyRatio";
 import {
   currentMonthValue,
   chargeTypeLabels,
   formatDateVN,
-  getFeeAmount,
   getMonthSummary,
   getMemberPaymentsByMonth,
   getWalkinsByMonth,
@@ -59,11 +59,9 @@ function groupMemberPaymentsByDate(rows: MonthlyMemberPayment[]) {
 export default async function TongHopPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
   const month = params.month || currentMonthValue();
-  const [summary, formerFixedFee, walkinFee, walkins, memberPayments] =
+  const [summary, walkins, memberPayments] =
     await Promise.all([
       getMonthSummary(month),
-      getFeeAmount("former_fixed", "base_fee", `${month}-01`),
-      getFeeAmount("walkin", "base_fee", `${month}-01`),
       getWalkinsByMonth(month),
       getMemberPaymentsByMonth(month),
     ]);
@@ -161,22 +159,18 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                 (sum, row) => sum + (row.amount_expected || 0),
                 0
               );
-              const isComplete = collected >= expected;
               return (
                 <details className="walkin-day-card" key={date}>
                   <summary className="walkin-day-head">
                     <div>
                       <strong>{formatDateVN(date)}</strong>
                     </div>
-                    <b className={isComplete ? "complete" : "missing"}>
-                      {money(collected)} / {money(expected)}
-                    </b>
+                    <MoneyRatio paid={collected} total={expected} />
                   </summary>
                   <div className="walkin-day-items">
                     {rows.map((row) => {
                       const rowCollected = row.amount_collected || 0;
                       const rowExpected = row.amount_expected || 0;
-                      const rowComplete = rowCollected >= rowExpected;
                       return (
                         <div className="walkin-day-item" key={row.id}>
                           <div>
@@ -187,9 +181,7 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                               Vãng lai #{row.walkin_number} - {walkinLabel(row)}
                             </span>
                           </div>
-                          <b className={rowComplete ? "complete" : "missing"}>
-                            {money(rowCollected)} / {money(rowExpected)}
-                          </b>
+                          <MoneyRatio paid={rowCollected} total={rowExpected} />
                         </div>
                       );
                     })}
@@ -247,19 +239,6 @@ export default async function TongHopPage({ searchParams }: PageProps) {
           <Link className="btn-primary" href={`/tong-hop/tien-do?month=${month}`}>
             Xem thống kê
           </Link>
-        </div>
-      </section>
-
-      <section className="rate-card-grid">
-        <div className="rate-card">
-          <span>Từng cố định, giờ giao lưu</span>
-          <strong>{money(formerFixedFee)}</strong>
-          <small>/buổi</small>
-        </div>
-        <div className="rate-card accent">
-          <span>Giao lưu lẻ, chưa từng cố định</span>
-          <strong>{money(walkinFee)}</strong>
-          <small>/buổi</small>
         </div>
       </section>
 
