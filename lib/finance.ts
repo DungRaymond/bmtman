@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { getSupabaseAdmin, hasServerSupabaseConfig } from "@/lib/supabaseServer";
 
 export type Member = {
@@ -394,7 +395,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export async function getMembers() {
+export const getMembers = cache(async function getMembers() {
   if (!hasServerSupabaseConfig) return [];
   const { data, error } = await getSupabaseAdmin()
     .from("members")
@@ -402,9 +403,9 @@ export async function getMembers() {
     .order("name", { ascending: true });
   if (error) throw error;
   return (data || []) as Member[];
-}
+});
 
-export async function getNamedWalkinNames() {
+export const getNamedWalkinNames = cache(async function getNamedWalkinNames() {
   if (!hasServerSupabaseConfig) return [] as string[];
   const supabase = getSupabaseAdmin();
   const { data: people, error: peopleError } = await supabase
@@ -431,9 +432,9 @@ export async function getNamedWalkinNames() {
     if (name) names.set(name.toLocaleLowerCase("vi"), name);
   }
   return Array.from(names.values()).sort((a, b) => a.localeCompare(b, "vi"));
-}
+});
 
-export async function getActiveMembers(date: string) {
+export const getActiveMembers = cache(async function getActiveMembers(date: string) {
   if (!hasServerSupabaseConfig) return [];
   const { data, error } = await getSupabaseAdmin()
     .from("member_status_periods")
@@ -448,9 +449,9 @@ export async function getActiveMembers(date: string) {
     status: row.status,
     member: Array.isArray(row.members) ? row.members[0] : row.members,
   }));
-}
+});
 
-export async function getMemberStatus(memberId: number, date: string) {
+export const getMemberStatus = cache(async function getMemberStatus(memberId: number, date: string) {
   const { data, error } = await getSupabaseAdmin()
     .from("member_status_periods")
     .select("status")
@@ -462,7 +463,7 @@ export async function getMemberStatus(memberId: number, date: string) {
     .maybeSingle();
   if (error) throw error;
   return data?.status as "fixed" | "former_fixed" | undefined;
-}
+});
 
 export async function getSessionByDate(date: string) {
   if (!hasServerSupabaseConfig) return null;
@@ -503,7 +504,7 @@ export async function getSessionWalkins(sessionId: number) {
   return (data || []) as SessionWalkin[];
 }
 
-export async function getDailyScorecard(date: string) {
+export const getDailyScorecard = cache(async function getDailyScorecard(date: string) {
   if (!hasServerSupabaseConfig) {
     return {
       score_date: date,
@@ -533,7 +534,7 @@ export async function getDailyScorecard(date: string) {
     ...row,
     payload: normalizeScorecardPayload(row.payload),
   } satisfies DailyScorecard;
-}
+});
 
 export async function getMonthlyStakePeople(month: string) {
   if (!hasServerSupabaseConfig) return [] as MonthlyStakePerson[];
@@ -670,7 +671,7 @@ export async function getWalkinReceivables() {
   return (data || []) as WalkinReceivable[];
 }
 
-export async function getWalkinsByMonth(month: string) {
+export const getWalkinsByMonth = cache(async function getWalkinsByMonth(month: string) {
   if (!hasServerSupabaseConfig) return [];
   const { data, error } = await getSupabaseAdmin()
     .from("session_walkins")
@@ -682,7 +683,7 @@ export async function getWalkinsByMonth(month: string) {
     .order("fee_type", { ascending: false });
   if (error) throw error;
   return (data || []) as WalkinByDay[];
-}
+});
 
 export async function getCharges() {
   if (!hasServerSupabaseConfig) return [];
@@ -992,7 +993,7 @@ function memberFeeItemName(name: string) {
   return labels[name] || name;
 }
 
-export async function getFeeAmount(
+export const getFeeAmount = cache(async function getFeeAmount(
   status: "fixed" | "former_fixed" | "walkin",
   component: "base_fee" | "stake_fee",
   date: string
@@ -1011,7 +1012,7 @@ export async function getFeeAmount(
     .maybeSingle();
   if (error) throw error;
   return data?.amount || 0;
-}
+});
 
 export function nextMonth(month: string) {
   const [year, rawMonth] = month.split("-").map(Number);

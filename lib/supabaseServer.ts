@@ -7,7 +7,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 export const hasServerSupabaseConfig = !!supabaseUrl && !!serviceRoleKey;
 
-export function getSupabaseAdmin() {
+function createAdminClient() {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error(
       "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY on the server."
@@ -18,6 +18,14 @@ export function getSupabaseAdmin() {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
+      detectSessionInUrl: false,
     },
   });
+}
+
+let adminClient: ReturnType<typeof createAdminClient> | undefined;
+
+export function getSupabaseAdmin() {
+  adminClient ??= createAdminClient();
+  return adminClient;
 }

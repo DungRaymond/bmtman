@@ -57,32 +57,16 @@ async function upsertSessionCharge(input: {
   amount: number;
   note?: string;
 }) {
-  const supabase = getSupabaseAdmin();
-  const { data: existing, error: findError } = await supabase
-    .from("charges")
-    .select("charge_id")
-    .eq("member_id", input.memberId)
-    .eq("charge_type", input.chargeType)
-    .eq("session_id", input.sessionId)
-    .maybeSingle();
-  if (findError) throw findError;
-
-  if (existing) {
-    const { error } = await supabase
-      .from("charges")
-      .update({ amount: input.amount, note: input.note || null })
-      .eq("charge_id", existing.charge_id);
-    if (error) throw error;
-    return;
-  }
-
-  const { error } = await supabase.from("charges").insert({
-    member_id: input.memberId,
-    charge_type: input.chargeType,
-    amount: input.amount,
-    session_id: input.sessionId,
-    note: input.note || null,
-  });
+  const { error } = await getSupabaseAdmin().from("charges").upsert(
+    {
+      member_id: input.memberId,
+      charge_type: input.chargeType,
+      amount: input.amount,
+      session_id: input.sessionId,
+      note: input.note || null,
+    },
+    { onConflict: "member_id,charge_type,session_id" }
+  );
   if (error) throw error;
 }
 
@@ -91,26 +75,21 @@ async function ensureWalkinSessionFee(input: {
   walkinNumber: number;
   amount: number;
 }) {
-  const supabase = getSupabaseAdmin();
-  const { data: existing, error: findError } = await supabase
-    .from("session_walkins")
-    .select("id")
-    .eq("session_id", input.sessionId)
-    .eq("walkin_number", input.walkinNumber)
-    .eq("fee_type", "session_fee")
-    .maybeSingle();
-  if (findError) throw findError;
-  if (existing) return;
-
-  const { error } = await supabase.from("session_walkins").insert({
-    session_id: input.sessionId,
-    walkin_number: input.walkinNumber,
-    fee_type: "session_fee",
-    amount_expected: input.amount,
-    is_paid: 0,
-    amount_collected: null,
-    note: "Tự tạo khi chốt sổ độ ngày",
-  });
+  const { error } = await getSupabaseAdmin().from("session_walkins").upsert(
+    {
+      session_id: input.sessionId,
+      walkin_number: input.walkinNumber,
+      fee_type: "session_fee",
+      amount_expected: input.amount,
+      is_paid: 0,
+      amount_collected: null,
+      note: "Tự tạo khi chốt sổ độ ngày",
+    },
+    {
+      onConflict: "session_id,walkin_number,fee_type",
+      ignoreDuplicates: true,
+    }
+  );
   if (error) throw error;
 }
 
@@ -400,7 +379,14 @@ export async function settleDailyScorecardAction(formData: FormData) {
   }
 
   const supabase = getSupabaseAdmin();
-  const walkinFee = await getFeeAmount("walkin", "base_fee", date);
+  const [walkinFee, formerFixedFee, activeMemberRows] = await Promise.all([
+    getFeeAmount("walkin", "base_fee", date),
+    getFeeAmount("former_fixed", "base_fee", date),
+    getActiveMembers(date),
+  ]);
+  const memberStatusById = new Map(
+    activeMemberRows.map((row) => [row.member_id, row.status])
+  );
 
   const { data: existingWalkins, error: existingWalkinsError } = await supabase
     .from("session_walkins")
@@ -440,9 +426,9 @@ export async function settleDailyScorecardAction(formData: FormData) {
     }
   }
 
-  for (const memberId of presentMemberIds) {
-    const status = await getMemberStatus(memberId, date);
-    if (!status) continue;
+  const memberUpdates = Array.from(presentMemberIds, async (memberId) => {
+    const status = memberStatusById.get(memberId);
+    if (!status) return;
     const stakePoints = memberStakes.get(memberId) || 0;
 
     const { error } = await supabase.from("session_stake_points").upsert(
@@ -456,33 +442,34 @@ export async function settleDailyScorecardAction(formData: FormData) {
     if (error) throw error;
 
     if (status === "former_fixed") {
-      const baseFee = await getFeeAmount("former_fixed", "base_fee", date);
-      await upsertSessionCharge({
-        memberId,
-        sessionId: session.session_id,
-        chargeType: "session_giaoluu_fee",
-        amount: baseFee,
-        note: "Tự tạo khi chốt sổ độ ngày",
-      });
-      await upsertSessionCharge({
-        memberId,
-        sessionId: session.session_id,
-        chargeType: "session_stake_fee",
-        amount: stakePoints,
-        note: "Tự tổng hợp từ thẻ ghi độ ngày",
-      });
+      await Promise.all([
+        upsertSessionCharge({
+          memberId,
+          sessionId: session.session_id,
+          chargeType: "session_giaoluu_fee",
+          amount: formerFixedFee,
+          note: "Tự tạo khi chốt sổ độ ngày",
+        }),
+        upsertSessionCharge({
+          memberId,
+          sessionId: session.session_id,
+          chargeType: "session_stake_fee",
+          amount: stakePoints,
+          note: "Tự tổng hợp từ thẻ ghi độ ngày",
+        }),
+      ]);
     }
-  }
+  });
 
-  for (const walkinNumber of presentWalkinNumbers) {
-    await ensureWalkinSessionFee({
+  const walkinFeeUpdates = Array.from(presentWalkinNumbers, (walkinNumber) =>
+    ensureWalkinSessionFee({
       sessionId: session.session_id,
       walkinNumber,
       amount: walkinFee,
-    });
-  }
+    })
+  );
 
-  for (const [walkinNumber, amount] of walkinStakes.entries()) {
+  const walkinStakeUpdates = Array.from(walkinStakes, async ([walkinNumber, amount]) => {
     const { error } = await supabase.from("session_walkins").upsert(
       {
         session_id: session.session_id,
@@ -496,7 +483,9 @@ export async function settleDailyScorecardAction(formData: FormData) {
       { onConflict: "session_id,walkin_number,fee_type" }
     );
     if (error) throw error;
-  }
+  });
+
+  await Promise.all([...memberUpdates, ...walkinFeeUpdates, ...walkinStakeUpdates]);
 
   const { error } = await supabase
     .from("daily_scorecards")
