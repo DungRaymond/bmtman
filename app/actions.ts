@@ -261,6 +261,56 @@ export async function confirmScoreEntryAction(
   }
 }
 
+export async function updateScoreEntryAction(
+  previousState: ConfirmScoreEntryState,
+  formData: FormData
+): Promise<ConfirmScoreEntryState> {
+  try {
+    const date = requiredString(formData, "date");
+    const setId = requiredString(formData, "set_id");
+    const card = await getDailyScorecard(date);
+    assertScorecardIsOpen(card.settled_at);
+    const payload = normalizeScorecardPayload(card.payload);
+    const index = payload.sets.findIndex((set) => set.id === setId);
+    if (index < 0) throw new Error("Không tìm thấy lượt độ.");
+
+    const winnerValue = String(formData.get("winner") || "");
+    const updated: ScoreSet = {
+      ...payload.sets[index],
+      amount: intValue(formData, "amount"),
+      winner: winnerValue === "A" || winnerValue === "B" ? winnerValue : null,
+      locked: true,
+      players: [
+        scoreEntryPlayer(formData, "player_0"),
+        scoreEntryPlayer(formData, "player_1"),
+        scoreEntryPlayer(formData, "player_2"),
+        scoreEntryPlayer(formData, "player_3"),
+      ],
+    };
+
+    if (updated.amount < 5000) {
+      throw new Error("Mức độ phải từ 5.000đ.");
+    }
+    if (!scoreSetIsReady(updated)) {
+      throw new Error("Cần chọn người đầu tiên của mỗi bên và bên thắng.");
+    }
+    if (scoreSetHasDuplicatePlayers(updated)) {
+      throw new Error("Một thẻ không được chọn trùng người.");
+    }
+
+    payload.sets[index] = updated;
+    await saveDailyScorecard(date, payload);
+    revalidatePath("/");
+    revalidatePath("/tong-hop/tien-do");
+    return { successKey: previousState.successKey + 1, error: "" };
+  } catch (error) {
+    return {
+      successKey: previousState.successKey,
+      error: error instanceof Error ? error.message : "Không sửa được lượt độ.",
+    };
+  }
+}
+
 export async function saveScoreSetAction(formData: FormData) {
   const date = requiredString(formData, "date");
   const setId = requiredString(formData, "set_id");

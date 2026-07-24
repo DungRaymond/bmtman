@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useId, useState } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
 import {
   confirmScoreEntryAction,
   type ConfirmScoreEntryState,
+  updateScoreEntryAction,
 } from "@/app/actions";
 
 export type ScorePlayerSuggestion = {
@@ -20,6 +21,18 @@ type Props = {
 
 type Side = "A" | "B";
 type PlayerState = { value: string; text: string };
+
+export type EditableScoreEntry = {
+  id: string;
+  amount: number;
+  winner: Side | null;
+  players: PlayerState[];
+};
+
+export type ScoreHistoryEntry = EditableScoreEntry & {
+  sideALabel: string;
+  sideBLabel: string;
+};
 
 const INITIAL_STATE: ConfirmScoreEntryState = { successKey: 0, error: "" };
 const EMPTY_PLAYER: PlayerState = { value: "", text: "" };
@@ -160,20 +173,25 @@ function ScoreEntryForm({
   formAction,
   pending,
   error,
+  initialEntry,
+  submitLabel = "Xác nhận",
+  onCancel,
 }: Props & {
   formAction: (formData: FormData) => void;
   pending: boolean;
   error: string;
+  initialEntry?: EditableScoreEntry;
+  submitLabel?: string;
+  onCancel?: () => void;
 }) {
-  const [players, setPlayers] = useState<PlayerState[]>([
-    EMPTY_PLAYER,
-    EMPTY_PLAYER,
-    EMPTY_PLAYER,
-    EMPTY_PLAYER,
-  ]);
-  const [amount, setAmount] = useState(MIN_AMOUNT);
+  const [players, setPlayers] = useState<PlayerState[]>(() =>
+    initialEntry
+      ? initialEntry.players.map((player) => ({ ...player }))
+      : [EMPTY_PLAYER, EMPTY_PLAYER, EMPTY_PLAYER, EMPTY_PLAYER]
+  );
+  const [amount, setAmount] = useState(initialEntry?.amount ?? MIN_AMOUNT);
   const [editingAmount, setEditingAmount] = useState(false);
-  const [winner, setWinner] = useState<Side | null>(null);
+  const [winner, setWinner] = useState<Side | null>(initialEntry?.winner ?? null);
 
   function updatePlayer(index: number, player: PlayerState) {
     setPlayers((current) =>
@@ -200,6 +218,7 @@ function ScoreEntryForm({
   return (
     <form className="score-entry-card" action={formAction}>
       <input type="hidden" name="date" value={date} />
+      {initialEntry && <input type="hidden" name="set_id" value={initialEntry.id} />}
       <input type="hidden" name="amount" value={amount} />
       <input type="hidden" name="winner" value={winner || ""} />
 
@@ -276,9 +295,21 @@ function ScoreEntryForm({
             onClick={() => setAmount((value) => Math.max(MIN_AMOUNT, value + AMOUNT_STEP))}
           >+</button>
         </div>
-        <button className="score-entry-submit" type="submit" disabled={!canSubmit}>
-          ✓ {pending ? "Đang ghi..." : "Xác nhận"}
-        </button>
+        <div className={onCancel ? "score-entry-actions" : "score-entry-actions single"}>
+          {onCancel && (
+            <button
+              className="score-entry-cancel"
+              type="button"
+              disabled={pending}
+              onClick={onCancel}
+            >
+              Hủy
+            </button>
+          )}
+          <button className="score-entry-submit" type="submit" disabled={!canSubmit}>
+            ✓ {pending ? "Đang lưu..." : submitLabel}
+          </button>
+        </div>
       </div>
     </form>
   );
@@ -294,5 +325,94 @@ export function ScoreEntryCard(props: Props) {
       pending={pending}
       error={state.error}
     />
+  );
+}
+
+function ScoreHistoryEditForm({
+  date,
+  suggestions,
+  entry,
+  onCancel,
+  onSaved,
+}: {
+  date: string;
+  suggestions: ScorePlayerSuggestion[];
+  entry: EditableScoreEntry;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [state, formAction, pending] = useActionState(updateScoreEntryAction, INITIAL_STATE);
+
+  useEffect(() => {
+    if (state.successKey > 0) onSaved();
+  }, [state.successKey, onSaved]);
+
+  return (
+    <div className="score-history-edit-form">
+      <ScoreEntryForm
+        date={date}
+        suggestions={suggestions}
+        disabled={false}
+        formAction={formAction}
+        pending={pending}
+        error={state.error}
+        initialEntry={entry}
+        submitLabel="Lưu sửa đổi"
+        onCancel={onCancel}
+      />
+    </div>
+  );
+}
+
+export function ScoreHistoryEditor({
+  date,
+  index,
+  suggestions,
+  entry,
+  disabled,
+}: {
+  date: string;
+  index: number;
+  suggestions: ScorePlayerSuggestion[];
+  entry: ScoreHistoryEntry;
+  disabled: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  return (
+    <div className={editing ? "score-history-item editing" : "score-history-item"}>
+      <div className={disabled ? "score-history-row read-only" : "score-history-row"}>
+        <span className="score-history-index">#{index + 1}</span>
+        <div className={entry.winner === "A" ? "winner" : ""}>
+          <small>BÊN A</small>
+          <strong>{entry.sideALabel}</strong>
+        </div>
+        <b>{entry.amount.toLocaleString("vi-VN")}đ</b>
+        <div className={entry.winner === "B" ? "winner" : ""}>
+          <small>BÊN B</small>
+          <strong>{entry.sideBLabel}</strong>
+        </div>
+        {!disabled && (
+          <button
+            className="score-history-edit-button"
+            type="button"
+            aria-expanded={editing}
+            aria-label={`Sửa lượt độ ${index + 1}`}
+            onClick={() => setEditing((value) => !value)}
+          >
+            {editing ? "Đóng" : "Sửa"}
+          </button>
+        )}
+      </div>
+      {editing && (
+        <ScoreHistoryEditForm
+          date={date}
+          suggestions={suggestions}
+          entry={entry}
+          onCancel={() => setEditing(false)}
+          onSaved={() => setEditing(false)}
+        />
+      )}
+    </div>
   );
 }

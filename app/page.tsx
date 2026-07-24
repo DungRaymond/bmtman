@@ -1,6 +1,10 @@
 import { settleDailyScorecardAction } from "@/app/actions";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
-import { ScoreEntryCard, type ScorePlayerSuggestion } from "@/app/ScoreEntryCard";
+import {
+  ScoreEntryCard,
+  ScoreHistoryEditor,
+  type ScorePlayerSuggestion,
+} from "@/app/ScoreEntryCard";
 import {
   formatDateVN,
   currentMonthValue,
@@ -10,6 +14,7 @@ import {
   getMembers,
   getNamedWalkinNames,
   money,
+  scorePlayerKey,
   todayInputValue,
   type Member,
   type ScorePlayer,
@@ -62,6 +67,13 @@ function sideLabel(players: ScorePlayer[], members: Member[]) {
     .join(" & ");
 }
 
+function editablePlayer(player: ScorePlayer, members: Member[]) {
+  return {
+    value: scorePlayerKey(player),
+    text: player.type === "empty" ? "" : playerLabel(player, members),
+  };
+}
+
 export default async function Home({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
   const today = todayInputValue();
@@ -90,6 +102,7 @@ export default async function Home({ searchParams }: PageProps) {
   const sets = scorecard.payload.sets;
   const isSettled = !!scorecard.settled_at;
   const canSettle = sets.length > 0 && sets.every((set) => set.locked) && !isSettled;
+  const suggestions = playerSuggestions(activeMembers, walkinNames);
 
   return (
     <main className="score-page">
@@ -108,7 +121,7 @@ export default async function Home({ searchParams }: PageProps) {
 
       <ScoreEntryCard
         date={date}
-        suggestions={playerSuggestions(activeMembers, walkinNames)}
+        suggestions={suggestions}
         disabled={isSettled || sets.length >= 12}
       />
 
@@ -119,18 +132,21 @@ export default async function Home({ searchParams }: PageProps) {
         </div>
         {sets.length === 0 && <div className="empty">Chưa có lượt độ nào.</div>}
         {sets.map((set, index) => (
-          <div className="score-history-row" key={set.id}>
-            <span className="score-history-index">#{index + 1}</span>
-            <div className={set.winner === "A" ? "winner" : ""}>
-              <small>BÊN A</small>
-              <strong>{sideLabel(set.players.slice(0, 2), members)}</strong>
-            </div>
-            <b>{money(set.amount)}</b>
-            <div className={set.winner === "B" ? "winner" : ""}>
-              <small>BÊN B</small>
-              <strong>{sideLabel(set.players.slice(2, 4), members)}</strong>
-            </div>
-          </div>
+          <ScoreHistoryEditor
+            date={date}
+            index={index}
+            suggestions={suggestions}
+            disabled={isSettled}
+            entry={{
+              id: set.id,
+              amount: set.amount,
+              winner: set.winner,
+              players: set.players.map((player) => editablePlayer(player, members)),
+              sideALabel: sideLabel(set.players.slice(0, 2), members),
+              sideBLabel: sideLabel(set.players.slice(2, 4), members),
+            }}
+            key={set.id}
+          />
         ))}
       </section>
 
