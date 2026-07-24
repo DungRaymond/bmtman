@@ -1323,6 +1323,29 @@ code {
   margin-bottom: 16px;
 }
 
+.score-entry-edit-head {
+  min-height: 34px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.score-entry-edit-head strong {
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+.score-entry-delete {
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: #7f1d1d;
+  color: #fee2e2;
+  font-size: 12px;
+}
+
 .score-entry-sides {
   position: relative;
   display: grid;

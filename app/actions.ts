@@ -372,11 +372,11 @@ export async function deleteScoreSetAction(formData: FormData) {
   const payload = normalizeScorecardPayload(card.payload);
   const target = payload.sets.find((set) => set.id === setId);
   if (!target) throw new Error("Không tìm thấy thẻ ghi độ.");
-  if (target.locked) throw new Error("Thẻ đã khóa, không thể xóa.");
 
   payload.sets = payload.sets.filter((set) => set.id !== setId);
   await saveDailyScorecard(date, payload);
   revalidatePath("/");
+  revalidatePath("/tong-hop/tien-do");
   redirect(`/?date=${date}`);
 }
 

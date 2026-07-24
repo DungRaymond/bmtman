@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useId, useState } from "react";
 import {
   confirmScoreEntryAction,
+  deleteScoreSetAction,
   type ConfirmScoreEntryState,
   updateScoreEntryAction,
 } from "@/app/actions";
@@ -176,6 +177,7 @@ function ScoreEntryForm({
   initialEntry,
   submitLabel = "Xác nhận",
   onCancel,
+  deleteAction,
 }: Props & {
   formAction: (formData: FormData) => void;
   pending: boolean;
@@ -183,6 +185,7 @@ function ScoreEntryForm({
   initialEntry?: EditableScoreEntry;
   submitLabel?: string;
   onCancel?: () => void;
+  deleteAction?: (formData: FormData) => void;
 }) {
   const [players, setPlayers] = useState<PlayerState[]>(() =>
     initialEntry
@@ -221,6 +224,25 @@ function ScoreEntryForm({
       {initialEntry && <input type="hidden" name="set_id" value={initialEntry.id} />}
       <input type="hidden" name="amount" value={amount} />
       <input type="hidden" name="winner" value={winner || ""} />
+
+      {initialEntry && deleteAction && (
+        <div className="score-entry-edit-head">
+          <strong>Chỉnh sửa lượt độ</strong>
+          <button
+            className="score-entry-delete"
+            type="submit"
+            formAction={deleteAction}
+            disabled={pending}
+            onClick={(event) => {
+              if (!window.confirm("Xóa lượt độ này? Thao tác không thể hoàn tác.")) {
+                event.preventDefault();
+              }
+            }}
+          >
+            Xóa lượt
+          </button>
+        </div>
+      )}
 
       <div className="score-entry-sides">
         {(["A", "B"] as const).map((side) => {
@@ -359,6 +381,7 @@ function ScoreHistoryEditForm({
         initialEntry={entry}
         submitLabel="Lưu sửa đổi"
         onCancel={onCancel}
+        deleteAction={deleteScoreSetAction}
       />
     </div>
   );
