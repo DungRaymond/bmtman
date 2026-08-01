@@ -1,6 +1,7 @@
 import {
   createMonthlySnapshotAction,
   generateMonthlyFixedFeesAction,
+  saveMonthlyCollectionSelectionAction,
 } from "@/app/actions";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import { MoneyRatio } from "@/app/components/MoneyRatio";
@@ -9,6 +10,8 @@ import {
   chargeTypeLabels,
   formatDateVN,
   getMonthSummary,
+  getMonthlyMemberCards,
+  getMemberFeeSummaries,
   getMemberPaymentsByMonth,
   getWalkinsByMonth,
   money,
@@ -56,14 +59,32 @@ function groupMemberPaymentsByDate(rows: MonthlyMemberPayment[]) {
   return Array.from(groups.entries()).sort(([a], [b]) => b.localeCompare(a));
 }
 
+const collectionComponents = [
+  { key: "fixed", label: "Tiền quỹ" },
+  { key: "stake", label: "Tiền độ" },
+  { key: "giao_luu", label: "Phí giao lưu" },
+  { key: "other", label: "Khoản khác" },
+] as const;
+
+function savedComponentAmount(
+  savedItems: { name: string; amount: number }[] | undefined,
+  label: string,
+  fallback: number
+) {
+  if (!savedItems) return fallback;
+  return savedItems.find((item) => item.name === label)?.amount || 0;
+}
+
 export default async function TongHopPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
   const month = params.month || currentMonthValue();
-  const [summary, walkins, memberPayments] =
+  const [summary, walkins, memberPayments, monthlyCards, feeSummaries] =
     await Promise.all([
       getMonthSummary(month),
       getWalkinsByMonth(month),
       getMemberPaymentsByMonth(month),
+      getMonthlyMemberCards(month),
+      getMemberFeeSummaries(month),
     ]);
   const walkinGroups = groupWalkinsByDate(walkins);
   const memberPaymentGroups = groupMemberPaymentsByDate(memberPayments);
@@ -71,6 +92,7 @@ export default async function TongHopPage({ searchParams }: PageProps) {
     (sum, row) => sum + row.outstanding_debt,
     0
   );
+  const feeSummaryByMember = new Map(feeSummaries.map((card) => [card.memberId, card]));
 
   return (
     <main>
@@ -221,6 +243,74 @@ export default async function TongHopPage({ searchParams }: PageProps) {
         </p>
       </section>
 
+      <section className="card monthly-collection-card">
+        <div className="section-title">Chọn khoản thu tháng</div>
+        <p className="muted monthly-collection-help">
+          Chọn khoản thực tế cần chốt cho từng thành viên. Tiền độ và phí giao lưu đã gồm
+          phần còn thiếu từ các tháng trước để có thể thu gộp một lần.
+        </p>
+        {monthlyCards.length === 0 ? (
+          <div className="empty">Chưa có thành viên hoặc chưa cấu hình dữ liệu thu.</div>
+        ) : (
+          <form action={saveMonthlyCollectionSelectionAction}>
+            <input type="hidden" name="period_month" value={month} />
+            <div className="monthly-collection-grid">
+              {monthlyCards.map((card) => {
+                const saved = feeSummaryByMember.get(card.memberId);
+                const savedItems = saved?.isSaved ? saved.items : undefined;
+                const values = {
+                  fixed: savedComponentAmount(savedItems, "Tiền quỹ", card.fixedFee),
+                  stake: savedComponentAmount(savedItems, "Tiền độ", card.stakeFee),
+                  giao_luu: savedComponentAmount(savedItems, "Phí giao lưu", card.giaoLuuFee),
+                  other: savedComponentAmount(savedItems, "Khoản khác", card.otherFee),
+                };
+                const total = Object.values(values).reduce((sum, amount) => sum + amount, 0);
+                return (
+                  <article className="monthly-collection-member" key={card.memberId}>
+                    <div className="monthly-collection-member-head">
+                      <div>
+                        <strong>{card.name}</strong>
+                        <span>{card.status === "fixed" ? "Cố định" : "Cố định cũ"}</span>
+                      </div>
+                      <b>{money(total)}</b>
+                    </div>
+                    <div className="monthly-collection-options">
+                      {collectionComponents.map((component) => {
+                        const amount = values[component.key];
+                        const prefix = `member_${card.memberId}_${component.key}`;
+                        return (
+                          <div className="monthly-collection-option" key={component.key}>
+                            <label>
+                              <input
+                                name={`${prefix}_selected`}
+                                type="checkbox"
+                                defaultChecked={amount > 0}
+                              />
+                              <span>{component.label}</span>
+                            </label>
+                            <input
+                              name={`${prefix}_amount`}
+                              type="number"
+                              min="0"
+                              step="1000"
+                              defaultValue={amount}
+                              aria-label={`${component.label} của ${card.name}`}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <button className="btn-primary" type="submit">
+              Chốt các khoản đã chọn
+            </button>
+          </form>
+        )}
+      </section>
+
       <section className="debt-card-grid">
         <div className="debt-summary-card">
           <div>
@@ -272,29 +362,6 @@ export default async function TongHopPage({ searchParams }: PageProps) {
         </form>
       </section>
 
-      <section className="card">
-        <div className="section-title">Công nợ cao nhất</div>
-        <div className="table-list">
-          {summary.balances
-            .filter((row) => row.outstanding_debt > 0)
-            .slice(0, 10)
-            .map((row) => (
-              <div className="data-row" key={row.member_id}>
-                <div>
-                  <strong>{row.name}</strong>
-                  <div className="muted">
-                    Đã thu {money(row.total_paid)} / phải thu{" "}
-                    {money(row.total_charged)}
-                  </div>
-                </div>
-                <strong className="lose-text">{money(row.outstanding_debt)}</strong>
-              </div>
-            ))}
-          {summary.balances.every((row) => row.outstanding_debt <= 0) && (
-            <div className="empty">Không còn công nợ.</div>
-          )}
-        </div>
-      </section>
     </main>
   );
 }

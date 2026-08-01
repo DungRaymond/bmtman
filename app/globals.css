@@ -358,6 +358,90 @@ code {
   transform: translateY(-1px);
 }
 
+.monthly-collection-help {
+  max-width: 760px;
+  margin: -4px 0 14px;
+}
+
+.monthly-collection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.monthly-collection-member {
+  background: #0f172a;
+  border: 1px solid #273449;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.monthly-collection-member-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 12px;
+  background: #142133;
+  border-bottom: 1px solid #273449;
+}
+
+.monthly-collection-member-head strong,
+.monthly-collection-member-head span {
+  display: block;
+}
+
+.monthly-collection-member-head strong {
+  color: #f8fafc;
+}
+
+.monthly-collection-member-head span {
+  margin-top: 3px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.monthly-collection-member-head b {
+  color: #4ade80;
+  white-space: nowrap;
+}
+
+.monthly-collection-options {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px 12px;
+}
+
+.monthly-collection-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  align-items: center;
+  gap: 8px;
+}
+
+.monthly-collection-option label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  color: #cbd5e1;
+}
+
+.monthly-collection-option label input {
+  width: 16px;
+  height: 16px;
+  accent-color: #4ade80;
+}
+
+.monthly-collection-option > input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 7px;
+  text-align: right;
+}
+
 .member-debt-layout {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1930,6 +2014,66 @@ button {
   margin-top: 14px;
 }
 
+.unpaid-collection-list {
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.unpaid-collection-card {
+  overflow: hidden;
+  background: #0f172a;
+  border: 1px solid #273449;
+  border-radius: 5px;
+}
+
+.unpaid-collection-summary {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 32px;
+  padding: 5px 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.unpaid-collection-summary::-webkit-details-marker {
+  display: none;
+}
+
+.unpaid-collection-summary time {
+  color: #c084fc;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.unpaid-collection-summary strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unpaid-collection-summary b {
+  color: #f8fafc;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.unpaid-collection-card[open] .unpaid-collection-summary {
+  background: #162033;
+  border-bottom: 1px solid #273449;
+}
+
+.unpaid-collection-details {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 1fr) minmax(190px, 1fr);
+  gap: 10px;
+  align-items: end;
+  padding: 10px;
+}
+
 .data-row {
   display: grid;
   grid-template-columns: minmax(180px, 1.4fr) repeat(3, minmax(120px, 1fr)) auto;
@@ -2362,6 +2506,7 @@ button {
   }
 
   .summary-grid,
+  .monthly-collection-grid,
   .stake-overview,
   .debt-card-grid,
   .member-debt-layout,
@@ -2372,6 +2517,7 @@ button {
   .data-row,
   .pay-row,
   .walkin-pay-row,
+  .unpaid-collection-details,
   .charge-delete-row {
     grid-template-columns: 1fr;
   }

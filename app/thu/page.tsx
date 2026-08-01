@@ -254,53 +254,55 @@ export default async function ThuPage({ searchParams }: PageProps) {
 
       <section className="card">
         <div className="section-title">Vãng lai chưa thu</div>
-        <div className="table-list">
+        <div className="table-list unpaid-collection-list">
           {unpaidWalkins.length === 0 && (
             <div className="empty">Không còn khoản vãng lai chưa thu.</div>
           )}
           {unpaidWalkins.map((walkin) => {
             const sessionDate = walkinSessionDate(walkin);
             return (
-              <form
-                className="data-row walkin-pay-row"
-                key={walkin.id}
-                action={recordWalkinPaymentAction}
-              >
-                <input type="hidden" name="id" value={walkin.id} />
-                <div>
-                  <div className="payment-person-line">
-                    <strong>
-                      {walkin.walkin_name || `Vãng lai #${walkin.walkin_number}`}
-                    </strong>
-                    {sessionDate && <span className="muted">{formatDateVN(sessionDate)}</span>}
+              <details className="unpaid-collection-card" key={walkin.id}>
+                <summary className="unpaid-collection-summary">
+                  <time dateTime={sessionDate || undefined}>
+                    {sessionDate ? formatDateVN(sessionDate) : "—"}
+                  </time>
+                  <strong>
+                    {walkin.walkin_name || `Vãng lai #${walkin.walkin_number}`}
+                  </strong>
+                  <b>{money(walkinOutstandingAmount(walkin))}</b>
+                </summary>
+                <form
+                  className="unpaid-collection-details"
+                  action={recordWalkinPaymentAction}
+                >
+                  <input type="hidden" name="id" value={walkin.id} />
+                  <div>
+                    <label>Số tiền thu</label>
+                    <input
+                      name="amount_collected"
+                      type="number"
+                      min="1"
+                      defaultValue={walkinOutstandingAmount(walkin)}
+                    />
                   </div>
-                </div>
-                <div>
-                  <label>Số tiền thu</label>
-                  <input
-                    name="amount_collected"
-                    type="number"
-                    min="1"
-                    defaultValue={walkinOutstandingAmount(walkin)}
-                  />
-                </div>
-                <div>
-                  <label>Ghi chú</label>
-                  <input name="note" defaultValue="Phí giao lưu buổi" />
-                </div>
-                <div className="pay-actions">
-                  <button className="btn-primary small-btn" type="submit">
-                    Xác nhận thu
-                  </button>
-                  <button
-                    className="btn-secondary small-btn"
-                    formAction={deleteWalkinReceivableAction}
-                    type="submit"
-                  >
-                    Xóa
-                  </button>
-                </div>
-              </form>
+                  <div>
+                    <label>Ghi chú</label>
+                    <input name="note" defaultValue="Phí giao lưu buổi" />
+                  </div>
+                  <div className="pay-actions">
+                    <button className="btn-primary small-btn" type="submit">
+                      Xác nhận thu
+                    </button>
+                    <button
+                      className="btn-secondary small-btn"
+                      formAction={deleteWalkinReceivableAction}
+                      type="submit"
+                    >
+                      Xóa
+                    </button>
+                  </div>
+                </form>
+              </details>
             );
           })}
         </div>
@@ -308,7 +310,7 @@ export default async function ThuPage({ searchParams }: PageProps) {
 
       <section className="card">
         <div className="section-title">Khoản thành viên chưa thu</div>
-        <div className="table-list">
+        <div className="table-list unpaid-collection-list">
           {unpaidCharges.length === 0 && (
             <div className="empty">Không còn khoản thành viên chưa thu.</div>
           )}
@@ -316,49 +318,48 @@ export default async function ThuPage({ searchParams }: PageProps) {
             const session = Array.isArray(charge.sessions)
               ? charge.sessions[0]
               : charge.sessions;
+            const chargeDate = session?.session_date || charge.created_at.slice(0, 10);
             return (
-              <form
-                className="data-row pay-row"
-                key={charge.charge_id}
-                action={recordPaymentAction}
-              >
-              <input type="hidden" name="charge_id" value={charge.charge_id} />
-              <input type="hidden" name="paid_date" value={todayInputValue()} />
-              <input type="hidden" name="payment_method" value="bank_transfer" />
-              <div>
-                <div className="payment-person-line">
+              <details className="unpaid-collection-card" key={charge.charge_id}>
+                <summary className="unpaid-collection-summary">
+                  <time dateTime={chargeDate}>{formatDateVN(chargeDate)}</time>
                   <strong>{charge.members?.name || "Không rõ"}</strong>
-                  {session?.session_date && (
-                    <span className="muted">{formatDateVN(session.session_date)}</span>
-                  )}
-                </div>
-              </div>
-              <div>
-                <label>Số tiền thu</label>
-                <input
-                  name="amount_paid"
-                  type="number"
-                  min="1"
-                  defaultValue={outstandingAmount(charge)}
-                />
-              </div>
-              <div>
-                <label>Ghi chú</label>
-                <input name="note" defaultValue="Phí giao lưu buổi" />
-              </div>
-              <div className="pay-actions">
-                <button className="btn-primary small-btn" type="submit">
-                  Xác nhận thu
-                </button>
-                <button
-                  className="btn-secondary small-btn"
-                  formAction={deleteChargeAction}
-                  type="submit"
+                  <b>{money(outstandingAmount(charge))}</b>
+                </summary>
+                <form
+                  className="unpaid-collection-details"
+                  action={recordPaymentAction}
                 >
-                  Xóa
-                </button>
-              </div>
-            </form>
+                  <input type="hidden" name="charge_id" value={charge.charge_id} />
+                  <input type="hidden" name="paid_date" value={todayInputValue()} />
+                  <input type="hidden" name="payment_method" value="bank_transfer" />
+                  <div>
+                    <label>Số tiền thu</label>
+                    <input
+                      name="amount_paid"
+                      type="number"
+                      min="1"
+                      defaultValue={outstandingAmount(charge)}
+                    />
+                  </div>
+                  <div>
+                    <label>Ghi chú</label>
+                    <input name="note" defaultValue="Phí giao lưu buổi" />
+                  </div>
+                  <div className="pay-actions">
+                    <button className="btn-primary small-btn" type="submit">
+                      Xác nhận thu
+                    </button>
+                    <button
+                      className="btn-secondary small-btn"
+                      formAction={deleteChargeAction}
+                      type="submit"
+                    >
+                      Xóa
+                    </button>
+                  </div>
+                </form>
+              </details>
             );
           })}
         </div>

@@ -215,6 +215,7 @@ export type MemberFeeSummary = {
   totalDue: number;
   totalPaid: number;
   outstanding: number;
+  isSaved?: boolean;
 };
 
 type ActiveMemberRow = {
@@ -237,6 +238,12 @@ type AmountRow = {
 
 type MonthlyChargeRow = Omit<Charge, "payments"> & {
   payments?: { amount_paid: number | null; paid_date: string }[];
+  sessions?: { session_date: string } | { session_date: string }[] | null;
+};
+
+type MonthlyStakePointRow = {
+  member_id: number;
+  stake_points: number | null;
   sessions?: { session_date: string } | { session_date: string }[] | null;
 };
 
@@ -827,14 +834,22 @@ export async function getMonthlyMemberCards(month: string) {
 
   const activeMembers = await getActiveMembers(monthEndDate(month));
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("charges")
-    .select("*,payments(amount_paid,paid_date),sessions(session_date)")
-    .limit(1000);
-  if (error) throw error;
+  const [chargesResult, stakePointsResult] = await Promise.all([
+    supabase
+      .from("charges")
+      .select("*,payments(amount_paid,paid_date),sessions(session_date)")
+      .limit(2000),
+    supabase
+      .from("session_stake_points")
+      .select("member_id,stake_points,sessions(session_date)")
+      .limit(5000),
+  ]);
+  if (chargesResult.error) throw chargesResult.error;
+  if (stakePointsResult.error) throw stakePointsResult.error;
 
   const fixedBaseFee = await getFeeAmount("fixed", "base_fee", `${month}-01`);
   const cards = new Map<number, MonthlyMemberCard>();
+  const monthlyStakeChargePeriods = new Set<string>();
 
   for (const row of activeMembers) {
     cards.set(row.member_id, {
@@ -857,7 +872,8 @@ export async function getMonthlyMemberCards(month: string) {
     });
   }
 
-  for (const charge of (data || []) as MonthlyChargeRow[]) {
+  const charges = (chargesResult.data || []) as MonthlyChargeRow[];
+  for (const charge of charges) {
     const card = cards.get(charge.member_id);
     if (!card) continue;
 
@@ -879,11 +895,44 @@ export async function getMonthlyMemberCards(month: string) {
     );
     const outstandingAtMonthEnd = Math.max(amount - paidThroughMonth, 0);
 
-    if (!isCurrentMonth) continue;
+    if (charge.charge_type === "monthly_stake_fee" && period) {
+      monthlyStakeChargePeriods.add(`${charge.member_id}:${period}`);
+    }
+
+    if (!isCurrentMonth) {
+      if (period >= month || outstandingAtMonthEnd <= 0) continue;
+
+      card.previousDebt += outstandingAtMonthEnd;
+      card.previousOutstanding += outstandingAtMonthEnd;
+      card.currentUnpaid += outstandingAtMonthEnd;
+      if (charge.charge_type === "monthly_fixed_fee") {
+        card.fixedFee += outstandingAtMonthEnd;
+      } else if (
+        charge.charge_type === "monthly_stake_fee" ||
+        charge.charge_type === "session_stake_fee"
+      ) {
+        card.stakeFee += outstandingAtMonthEnd;
+      } else if (charge.charge_type === "session_giaoluu_fee") {
+        card.giaoLuuFee += outstandingAtMonthEnd;
+      } else {
+        card.otherFee += outstandingAtMonthEnd;
+      }
+      card.unpaidItems.push({
+        chargeId: charge.charge_id,
+        label: `${chargeTypeLabels[charge.charge_type] || charge.charge_type} (${period})`,
+        amount,
+        paid: paidThroughMonth,
+        outstanding: outstandingAtMonthEnd,
+        period,
+      });
+      continue;
+    }
 
     if (charge.charge_type === "monthly_fixed_fee") {
-      card.currentUnpaid = Math.max(card.currentUnpaid - card.fixedFee, 0);
-      card.fixedFee = amount;
+      const currentFixedBase = card.status === "fixed" ? fixedBaseFee : 0;
+      const carriedFixed = Math.max(card.fixedFee - currentFixedBase, 0);
+      card.currentUnpaid = Math.max(card.currentUnpaid - currentFixedBase, 0);
+      card.fixedFee = amount + carriedFixed;
     } else if (
       charge.charge_type === "monthly_stake_fee" ||
       charge.charge_type === "session_stake_fee"
@@ -908,6 +957,24 @@ export async function getMonthlyMemberCards(month: string) {
       });
     }
     card.chargeCount += 1;
+  }
+
+  for (const row of (stakePointsResult.data || []) as MonthlyStakePointRow[]) {
+    const card = cards.get(row.member_id);
+    if (!card || card.status !== "fixed") continue;
+
+    const session = Array.isArray(row.sessions) ? row.sessions[0] : row.sessions;
+    const period = session?.session_date?.slice(0, 7) || "";
+    const amount = Math.max(Number(row.stake_points) || 0, 0);
+    if (!period || period > month || amount <= 0) continue;
+    if (monthlyStakeChargePeriods.has(`${row.member_id}:${period}`)) continue;
+
+    card.stakeFee += amount;
+    card.currentUnpaid += amount;
+    if (period < month) {
+      card.previousDebt += amount;
+      card.previousOutstanding += amount;
+    }
   }
 
   for (const card of cards.values()) {
@@ -956,6 +1023,7 @@ export async function getMemberFeeSummaries(month: string) {
         totalDue: row.total_due || 0,
         totalPaid: row.total_paid || 0,
         outstanding: row.outstanding || 0,
+        isSaved: true,
       };
     });
   }
@@ -978,6 +1046,7 @@ function memberCardToFeeSummary(card: MonthlyMemberCard): MemberFeeSummary {
     totalDue: items.reduce((sum, item) => sum + item.amount, 0),
     totalPaid: card.totalPaid,
     outstanding: card.outstanding,
+    isSaved: false,
   };
 }
 

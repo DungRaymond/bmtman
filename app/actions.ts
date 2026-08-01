@@ -971,6 +971,53 @@ export async function generateMonthlyFixedFeesAction(formData: FormData) {
   redirect(`/tong-hop?month=${periodMonth}`);
 }
 
+export async function saveMonthlyCollectionSelectionAction(formData: FormData) {
+  await assertAdmin();
+  const periodMonth = requiredString(formData, "period_month");
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodMonth)) {
+    throw new Error("Tháng áp dụng không hợp lệ.");
+  }
+
+  const cards = await getMonthlyMemberCards(periodMonth);
+  const components = [
+    { key: "fixed", label: "Tiền quỹ" },
+    { key: "stake", label: "Tiền độ" },
+    { key: "giao_luu", label: "Phí giao lưu" },
+    { key: "other", label: "Khoản khác" },
+  ] as const;
+  const rows = cards.map((card) => {
+    const items = components.flatMap((component) => {
+      const prefix = `member_${card.memberId}_${component.key}`;
+      if (formData.get(`${prefix}_selected`) !== "on") return [];
+      const amount = intValue(formData, `${prefix}_amount`);
+      return amount > 0 ? [{ name: component.label, amount }] : [];
+    });
+    const totalDue = items.reduce((sum, item) => sum + item.amount, 0);
+    const totalPaid = Math.min(card.totalPaid, totalDue);
+    return {
+      member_id: card.memberId,
+      period_month: periodMonth,
+      member_status: card.status,
+      items,
+      total_due: totalDue,
+      total_paid: totalPaid,
+      outstanding: Math.max(totalDue - totalPaid, 0),
+      updated_at: new Date().toISOString(),
+    };
+  });
+
+  if (rows.length > 0) {
+    const { error } = await getSupabaseAdmin()
+      .from("member_fee_summaries")
+      .upsert(rows, { onConflict: "member_id,period_month" });
+    if (error) throw error;
+  }
+
+  revalidatePath("/tong-hop");
+  revalidatePath("/tong-hop/memfee-cards");
+  redirect(`/tong-hop?month=${periodMonth}`);
+}
+
 export async function saveMemberFeeSummariesAction(formData: FormData) {
   await assertAdmin();
   const periodMonth = requiredString(formData, "period_month");
