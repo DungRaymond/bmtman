@@ -13,16 +13,19 @@ import {
   formatDateVN,
   getMonthSummary,
   getMonthlyMemberCards,
+  getMonthlyWalkinCollectionCards,
   getMemberFeeSummaries,
   getMemberPaymentsByMonth,
+  getWalkinFeeSummaries,
   getWalkinsByMonth,
-  getWalkinsThroughMonth,
   money,
   todayInputValue,
-  walkinOutstandingAmount,
+  walkinPlanFieldPrefix,
   walkinSessionDate,
   type WalkinByDay,
   type MonthlyMemberPayment,
+  type MonthlyWalkinCollectionCard,
+  type WalkinFeeSummary,
 } from "@/lib/finance";
 import { isThuRouteAuthenticated } from "@/lib/thuAuth";
 import Link from "next/link";
@@ -45,45 +48,6 @@ function groupWalkinsByDate(rows: WalkinByDay[]) {
     groups.set(date, [...(groups.get(date) || []), row]);
   }
   return Array.from(groups.entries()).sort(([a], [b]) => b.localeCompare(a));
-}
-
-type UnpaidWalkinGroup = {
-  key: string;
-  name: string;
-  totalOutstanding: number;
-  count: number;
-};
-
-function groupUnpaidWalkins(rows: WalkinByDay[]) {
-  const groups = new Map<string, UnpaidWalkinGroup>();
-  for (const row of rows) {
-    const outstanding = walkinOutstandingAmount(row);
-    if (outstanding <= 0) continue;
-
-    const date = walkinSessionDate(row) || "unknown";
-    const cleanName = row.walkin_name?.trim().replace(/\s+/g, " ") || "";
-    const key = cleanName
-      ? `name:${cleanName.toLocaleLowerCase("vi")}`
-      : `walkin:${date}:${row.walkin_number}`;
-    const current = groups.get(key);
-    if (current) {
-      current.totalOutstanding += outstanding;
-      current.count += 1;
-      continue;
-    }
-
-    groups.set(key, {
-      key,
-      name: cleanName || `VÃ£ng lai #${row.walkin_number}`,
-      totalOutstanding: outstanding,
-      count: 1,
-    });
-  }
-
-  return Array.from(groups.values()).sort(
-    (left, right) =>
-      right.totalOutstanding - left.totalOutstanding || left.name.localeCompare(right.name, "vi")
-  );
 }
 
 function paymentCharge(payment: MonthlyMemberPayment) {
@@ -120,30 +84,62 @@ function savedComponentAmount(
   return savedItems.find((item) => item.name === label)?.amount || 0;
 }
 
-function WalkinCollectionCard({ group }: { group: UnpaidWalkinGroup }) {
+function InteractiveWalkinCollectionCard({
+  card,
+  saved,
+}: {
+  card: MonthlyWalkinCollectionCard;
+  saved?: WalkinFeeSummary;
+}) {
+  const prefix = walkinPlanFieldPrefix(card.groupKey);
+  const plannedAmount = saved?.totalDue ?? card.totalOutstanding;
+
   return (
     <article className="monthly-collection-member">
       <div className="monthly-collection-member-head">
         <div>
-          <strong>{group.name}</strong>
+          <strong>{card.name}</strong>
           <span>Vãng lai</span>
         </div>
-        <b>{money(group.totalOutstanding)}</b>
+        <b>{money(plannedAmount)}</b>
       </div>
       <div className="monthly-collection-options">
         <div className="monthly-collection-option">
-          <div className="monthly-collection-static-label">
-            <span className="monthly-collection-option-marker" aria-hidden="true">✓</span>
-            <span>Vãng lai chưa thu ({group.count} khoản)</span>
-          </div>
-          <output className="monthly-collection-static-amount">
-            {group.totalOutstanding.toLocaleString("vi-VN")}
-          </output>
+          <label>
+            <input
+              name={`${prefix}_selected`}
+              type="checkbox"
+              defaultChecked={plannedAmount > 0}
+            />
+            <span>Vãng lai chưa thu ({card.count} khoản)</span>
+          </label>
+          <input
+            name={`${prefix}_amount`}
+            type="number"
+            min="0"
+            max={card.totalOutstanding}
+            step="1000"
+            defaultValue={plannedAmount}
+            aria-label={`Khoản vãng lai của ${card.name}`}
+          />
         </div>
       </div>
       <div className="monthly-collection-status">
         <span>Trạng thái thu</span>
-        <strong className="unpaid">Chưa thu</strong>
+        <strong className={saved?.isSaved ? "partial" : "unpaid"}>
+          {saved?.isSaved ? "Đã lên kế hoạch" : "Chưa lưu kế hoạch"}
+        </strong>
+        {saved?.summaryId && saved.totalDue > 0 && (
+          <button
+            className="btn-primary small-btn"
+            type="submit"
+            name="collect_walkin_summary_id"
+            value={String(saved.summaryId)}
+            data-confirm-collection
+          >
+            Xác nhận đã thu
+          </button>
+        )}
       </div>
     </article>
   );
@@ -155,17 +151,18 @@ export default async function TongHopPage({ searchParams }: PageProps) {
     return <ManagementAuthPanel nextPath="/tong-hop" />;
   }
   const month = params.month || currentMonthValue();
-  const [summary, walkins, allWalkinsThroughMonth, memberPayments, monthlyCards, feeSummaries] =
+  const [summary, walkins, memberPayments, monthlyCards, feeSummaries, walkinCollectionCards, walkinFeeSummaries] =
     await Promise.all([
       getMonthSummary(month),
       getWalkinsByMonth(month),
-      getWalkinsThroughMonth(month),
       getMemberPaymentsByMonth(month),
       getMonthlyMemberCards(month),
       getMemberFeeSummaries(month),
-  ]);
+      getMonthlyWalkinCollectionCards(month),
+      getWalkinFeeSummaries(month),
+    ]);
   const walkinGroups = groupWalkinsByDate(walkins);
-  const unpaidWalkinGroups = groupUnpaidWalkins(allWalkinsThroughMonth);
+  const unpaidWalkinGroups = walkinCollectionCards;
   const memberPaymentGroups = groupMemberPaymentsByDate(memberPayments);
   const memberDebt = summary.balances.reduce(
     (sum, row) => sum + row.outstanding_debt,
@@ -177,6 +174,11 @@ export default async function TongHopPage({ searchParams }: PageProps) {
   );
   const totalDebt = memberDebt + unpaidWalkinTotal;
   const feeSummaryByMember = new Map(feeSummaries.map((card) => [card.memberId, card]));
+  const walkinSummaryByGroup = new Map(
+    walkinFeeSummaries
+      .filter((summary) => summary.collectionStatus === "planned")
+      .map((summary) => [summary.groupKey, summary])
+  );
 
   return (
     <main>
@@ -213,7 +215,8 @@ export default async function TongHopPage({ searchParams }: PageProps) {
             )}
             {memberPaymentGroups.map(([date, payments]) => {
               const dayTotal = payments.reduce(
-                (sum, payment) => sum + (payment.amount_paid || 0),
+                (sum, payment) =>
+                  sum + (payment.excludedFromFund ? 0 : payment.amount_paid || 0),
                 0
               );
               return (
@@ -233,6 +236,7 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                             <strong>{member.name}</strong>
                             <span>
                               {chargeTypeLabels[charge.charge_type] || charge.charge_type}
+                              {payment.excludedFromFund ? " · Không tính vào quỹ" : ""}
                             </span>
                           </div>
                           <b>{money(payment.amount_paid)}</b>
@@ -312,7 +316,7 @@ export default async function TongHopPage({ searchParams }: PageProps) {
               <div className="empty">Không còn khoản vãng lai chưa thu.</div>
             )}
             {unpaidWalkinGroups.map((group) => (
-              <div className="walkin-day-item" key={group.key}>
+              <div className="walkin-day-item" key={group.groupKey}>
                 <div>
                   <strong>{group.name}</strong>
                   <span>{group.count} khoản chưa thu</span>
@@ -355,19 +359,11 @@ export default async function TongHopPage({ searchParams }: PageProps) {
       <section className="card monthly-collection-card">
         <div className="section-title">Chọn khoản thu tháng</div>
         <p className="muted monthly-collection-help">
-          Chọn khoản thực tế cần chốt cho từng thành viên và xem các khoản vãng lai cần thu.
+          Chọn khoản thực tế cần chốt cho từng thành viên và các khoản vãng lai cần thu.
           Tiền độ và phí giao lưu đã gồm phần còn thiếu từ các tháng trước để có thể thu gộp một lần.
         </p>
-        {monthlyCards.length === 0 ? (
-          unpaidWalkinGroups.length === 0 ? (
-            <div className="empty">Chưa có thành viên hoặc chưa cấu hình dữ liệu thu.</div>
-          ) : (
-            <div className="monthly-collection-grid">
-              {unpaidWalkinGroups.map((group) => (
-                <WalkinCollectionCard group={group} key={group.key} />
-              ))}
-            </div>
-          )
+        {monthlyCards.length === 0 && unpaidWalkinGroups.length === 0 ? (
+          <div className="empty">Chưa có thành viên hoặc chưa cấu hình dữ liệu thu.</div>
         ) : (
           <form action={monthlyCollectionAction}>
             <ConfirmCollectionButton />
@@ -485,7 +481,11 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                 );
               })}
               {unpaidWalkinGroups.map((group) => (
-                <WalkinCollectionCard group={group} key={group.key} />
+                <InteractiveWalkinCollectionCard
+                  card={group}
+                  saved={walkinSummaryByGroup.get(group.groupKey)}
+                  key={group.groupKey}
+                />
               ))}
             </div>
             <button className="btn-primary" type="submit">

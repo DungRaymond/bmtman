@@ -8,6 +8,7 @@ export type Member = {
   name: string;
   joined_date: string | null;
   note: string | null;
+  exclude_fixed_fee_from_fund?: boolean;
 };
 
 export type Session = {
@@ -122,6 +123,7 @@ export type MonthlyMemberPayment = {
   paid_date: string;
   payment_method: string | null;
   note: string | null;
+  excludedFromFund?: boolean;
   charges:
     | {
         charge_id: number;
@@ -233,6 +235,36 @@ export type MemberFeeSummary = {
   isSaved?: boolean;
 };
 
+export type MonthlyWalkinCollectionCard = {
+  groupKey: string;
+  name: string;
+  walkinPersonId: number | null;
+  totalOutstanding: number;
+  count: number;
+  unpaidItems: {
+    walkinId: number;
+    sessionId: number;
+    walkinNumber: number;
+    feeType: "session_fee" | "stake_fee";
+    sessionDate: string;
+    outstanding: number;
+  }[];
+};
+
+export type WalkinFeeSummary = {
+  summaryId: number;
+  periodMonth: string;
+  groupKey: string;
+  walkinPersonId: number | null;
+  displayName: string;
+  totalDue: number;
+  totalPaid: number;
+  outstanding: number;
+  collectionStatus: "planned" | "collected";
+  collectedAt: string | null;
+  isSaved: true;
+};
+
 export function resolveMemberFeeCollectionStatus(
   status: unknown,
   totalDue: number,
@@ -266,6 +298,36 @@ type AmountCollectedRow = {
 type AmountRow = {
   amount: number | null;
 };
+
+type FundPaymentMember = {
+  exclude_fixed_fee_from_fund?: boolean | null;
+};
+
+type FundPaymentCharge = {
+  charge_type: string;
+  members?: FundPaymentMember | FundPaymentMember[] | null;
+};
+
+type FundPaymentRow = AmountPaidRow & {
+  charges?: FundPaymentCharge | FundPaymentCharge[] | null;
+};
+
+function relatedRow<T>(value: T | T[] | null | undefined) {
+  return Array.isArray(value) ? value[0] || null : value || null;
+}
+
+function paymentIsExcludedFromFund(row: FundPaymentRow) {
+  const charge = relatedRow(row.charges);
+  const member = relatedRow(charge?.members);
+  return charge?.charge_type === "monthly_fixed_fee" && member?.exclude_fixed_fee_from_fund === true;
+}
+
+function fundPaymentTotal(rows: FundPaymentRow[]) {
+  return rows.reduce(
+    (sum, row) => sum + (paymentIsExcludedFromFund(row) ? 0 : row.amount_paid || 0),
+    0
+  );
+}
 
 type MonthlyChargeRow = Omit<Charge, "payments"> & {
   payments?: { amount_paid: number | null; paid_date: string }[];
@@ -759,6 +821,104 @@ export const getWalkinsThroughMonth = cache(async function getWalkinsThroughMont
   return (data || []) as WalkinByDay[];
 });
 
+function normalizedWalkinName(name: string | null | undefined) {
+  return (name || "").trim().replace(/\s+/g, " ");
+}
+
+export function walkinCollectionGroupKey(row: WalkinByDay) {
+  if (row.walkin_person_id) return `person:${row.walkin_person_id}`;
+  const name = normalizedWalkinName(row.walkin_name);
+  if (name) return `name:${name.toLocaleLowerCase("vi")}`;
+  return `session:${row.session_id}:${row.walkin_number}`;
+}
+
+export function walkinPlanFieldPrefix(groupKey: string) {
+  return `walkin_${Buffer.from(groupKey, "utf8").toString("base64url")}`;
+}
+
+export function groupUnpaidWalkinCollectionCards(rows: WalkinByDay[]) {
+  const cards = new Map<string, MonthlyWalkinCollectionCard>();
+
+  for (const row of rows) {
+    const outstanding = walkinOutstandingAmount(row);
+    if (outstanding <= 0) continue;
+
+    const groupKey = walkinCollectionGroupKey(row);
+    const current = cards.get(groupKey);
+    const name = normalizedWalkinName(row.walkin_name) || `Vãng lai #${row.walkin_number}`;
+    const item = {
+      walkinId: row.id,
+      sessionId: row.session_id,
+      walkinNumber: row.walkin_number,
+      feeType: row.fee_type,
+      sessionDate: walkinSessionDate(row) || "",
+      outstanding,
+    };
+
+    if (current) {
+      current.totalOutstanding += outstanding;
+      current.count += 1;
+      current.unpaidItems.push(item);
+      continue;
+    }
+
+    cards.set(groupKey, {
+      groupKey,
+      name,
+      walkinPersonId: row.walkin_person_id || null,
+      totalOutstanding: outstanding,
+      count: 1,
+      unpaidItems: [item],
+    });
+  }
+
+  return Array.from(cards.values())
+    .map((card) => ({
+      ...card,
+      unpaidItems: card.unpaidItems.sort(
+        (left, right) =>
+          left.sessionDate.localeCompare(right.sessionDate) || left.walkinId - right.walkinId
+      ),
+    }))
+    .sort(
+      (left, right) =>
+        right.totalOutstanding - left.totalOutstanding || left.name.localeCompare(right.name, "vi")
+    );
+}
+
+export const getMonthlyWalkinCollectionCards = cache(async function getMonthlyWalkinCollectionCards(
+  month: string
+) {
+  return groupUnpaidWalkinCollectionCards(await getWalkinsThroughMonth(month));
+});
+
+export async function getWalkinFeeSummaries(month: string) {
+  if (!hasServerSupabaseConfig) return [] as WalkinFeeSummary[];
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("walkin_fee_summaries")
+    .select(
+      "id,period_month,group_key,walkin_person_id,display_name,total_due,total_paid,outstanding,status,collected_at"
+    )
+    .eq("period_month", month)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+
+  return (data || []).map((row) => ({
+    summaryId: Number(row.id),
+    periodMonth: row.period_month,
+    groupKey: row.group_key,
+    walkinPersonId: row.walkin_person_id || null,
+    displayName: row.display_name,
+    totalDue: Math.max(Number(row.total_due) || 0, 0),
+    totalPaid: Math.max(Number(row.total_paid) || 0, 0),
+    outstanding: Math.max(Number(row.outstanding) || 0, 0),
+    collectionStatus: row.status === "collected" ? "collected" : "planned",
+    collectedAt: row.collected_at || null,
+    isSaved: true as const,
+  })) satisfies WalkinFeeSummary[];
+}
+
 export async function getCharges() {
   if (!hasServerSupabaseConfig) return [];
   const { data, error } = await getSupabaseAdmin()
@@ -775,14 +935,17 @@ export async function getMemberPaymentsByMonth(month: string) {
   const { data, error } = await getSupabaseAdmin()
     .from("payments")
     .select(
-      "payment_id,amount_paid,paid_date,payment_method,note,charges!inner(charge_id,charge_type,amount,period_month,members!inner(member_id,name,joined_date,note))"
+      "payment_id,amount_paid,paid_date,payment_method,note,charges!inner(charge_id,charge_type,amount,period_month,members!inner(member_id,name,joined_date,note,exclude_fixed_fee_from_fund))"
     )
     .gte("paid_date", `${month}-01`)
     .lt("paid_date", nextMonth(month))
     .order("paid_date", { ascending: false })
     .order("payment_id", { ascending: false });
   if (error) throw error;
-  return (data || []) as MonthlyMemberPayment[];
+  return ((data || []) as FundPaymentRow[]).map((row) => ({
+    ...row,
+    excludedFromFund: paymentIsExcludedFromFund(row),
+  })) as MonthlyMemberPayment[];
 }
 
 export async function getPayments() {
@@ -848,7 +1011,7 @@ export async function getMonthSummary(month: string) {
       .maybeSingle(),
     supabase
       .from("payments")
-      .select("amount_paid")
+      .select("amount_paid,charges!inner(charge_type,members!inner(exclude_fixed_fee_from_fund))")
       .gte("paid_date", start)
       .lt("paid_date", end),
     supabase
@@ -868,7 +1031,7 @@ export async function getMonthSummary(month: string) {
       .order("outstanding_debt", { ascending: false }),
     supabase
       .from("payments")
-      .select("amount_paid")
+      .select("amount_paid,charges!inner(charge_type,members!inner(exclude_fixed_fee_from_fund))")
       .lt("paid_date", start),
     supabase
       .from("session_walkins")
@@ -895,10 +1058,7 @@ export async function getMonthSummary(month: string) {
   }
 
   const calculatedOpeningBalance =
-    ((priorPayments.data || []) as AmountPaidRow[]).reduce(
-      (sum, row) => sum + (row.amount_paid || 0),
-      0
-    ) +
+    fundPaymentTotal((priorPayments.data || []) as FundPaymentRow[]) +
     ((priorWalkins.data || []) as AmountCollectedRow[]).reduce(
       (sum, row) => sum + (row.amount_collected || 0),
       0
@@ -908,10 +1068,7 @@ export async function getMonthSummary(month: string) {
       0
     );
   const openingBalance = snapshot.data?.opening_balance ?? calculatedOpeningBalance;
-  const paymentsTotal = ((payments.data || []) as AmountPaidRow[]).reduce(
-    (sum, row) => sum + (row.amount_paid || 0),
-    0
-  );
+  const paymentsTotal = fundPaymentTotal((payments.data || []) as FundPaymentRow[]);
   const walkinsTotal = ((walkins.data || []) as AmountCollectedRow[]).reduce(
     (sum, row) => sum + (row.amount_collected || 0),
     0

@@ -14,7 +14,7 @@ export function ConfirmCollectionButton() {
 
       if (
         !window.confirm(
-          "Xác nhận đã thu tiền? Hành động này sẽ tạo payment thật và không tự hoàn tác từ màn hình này."
+          "Xác nhận đã thu tiền? Hành động này sẽ ghi nhận khoản thu thực tế và không tự hoàn tác từ màn hình này."
         )
       ) {
         event.preventDefault();

@@ -8,9 +8,11 @@ import {
   getFeeAmount,
   getMemberStatus,
   getMonthlyMemberCards,
+  getMonthlyWalkinCollectionCards,
   normalizeScorecardPayload,
   parseScorePlayerKey,
   todayInputValue,
+  walkinPlanFieldPrefix,
   type DailyScorecardPayload,
   type MemberFeeItem,
   type ScoreSet,
@@ -31,6 +33,20 @@ function intValue(formData: FormData, key: string, fallback = 0) {
   const value = Number(raw);
   if (!Number.isFinite(value)) throw new Error(`Giá trị số không hợp lệ cho ${key}`);
   return Math.max(0, Math.round(value));
+}
+
+async function assertWalkinNotPlannedForCollection(id: number) {
+  const { data, error } = await getSupabaseAdmin()
+    .from("walkin_fee_summary_items")
+    .select("id,walkin_fee_summaries!inner(status)")
+    .eq("session_walkin_id", id)
+    .eq("walkin_fee_summaries.status", "planned")
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (data) {
+    throw new Error("Khoản vãng lai đã nằm trong kế hoạch thu, hãy sửa kế hoạch tại Tổng hợp.");
+  }
 }
 
 type FeePlanRow = {
@@ -936,6 +952,7 @@ export async function toggleWalkinPaidAction(formData: FormData) {
   await assertAdmin();
   const date = requiredString(formData, "date");
   const id = intValue(formData, "id");
+  await assertWalkinNotPlannedForCollection(id);
   const { data, error: findError } = await getSupabaseAdmin()
     .from("session_walkins")
     .select("*")
@@ -960,6 +977,7 @@ export async function toggleWalkinPaidAction(formData: FormData) {
 export async function recordWalkinPaymentAction(formData: FormData) {
   await assertAdmin();
   const id = intValue(formData, "id");
+  await assertWalkinNotPlannedForCollection(id);
   const amountCollected = intValue(formData, "amount_collected");
   if (amountCollected <= 0) throw new Error("Số tiền thu phải lớn hơn 0.");
   const note = String(formData.get("note") || "").trim() || null;
@@ -1087,6 +1105,7 @@ export async function deleteChargeAction(formData: FormData) {
 export async function deleteWalkinReceivableAction(formData: FormData) {
   await assertAdmin();
   const id = intValue(formData, "id");
+  await assertWalkinNotPlannedForCollection(id);
   const { error } = await getSupabaseAdmin()
     .from("session_walkins")
     .delete()
@@ -1225,6 +1244,53 @@ export async function generateMonthlyFixedFeesAction(formData: FormData) {
   redirect(`/tong-hop?month=${periodMonth}`);
 }
 
+function walkinPlanAllocations(
+  card: Awaited<ReturnType<typeof getMonthlyWalkinCollectionCards>>[number],
+  plannedAmount: number
+) {
+  if (plannedAmount <= 0) return [];
+  if (plannedAmount > card.totalOutstanding) {
+    throw new Error("Kế hoạch vãng lai không được vượt quá số tiền còn phải thu.");
+  }
+
+  let remaining = plannedAmount;
+  const allocations: { walkin_id: number; amount: number }[] = [];
+  for (const item of card.unpaidItems) {
+    if (remaining <= 0) break;
+    const amount = Math.min(item.outstanding, remaining);
+    if (amount <= 0) continue;
+    allocations.push({ walkin_id: item.walkinId, amount });
+    remaining -= amount;
+  }
+
+  if (remaining > 0) {
+    throw new Error("Không thể phân bổ đủ số tiền vãng lai đã chọn.");
+  }
+  return allocations;
+}
+
+async function savePlannedWalkinSelections(formData: FormData, periodMonth: string) {
+  const cards = await getMonthlyWalkinCollectionCards(periodMonth);
+  const supabase = getSupabaseAdmin();
+
+  for (const card of cards) {
+    const prefix = walkinPlanFieldPrefix(card.groupKey);
+    const selected = formData.get(`${prefix}_selected`) === "on";
+    const plannedAmount = selected ? intValue(formData, `${prefix}_amount`) : 0;
+    const allocations = walkinPlanAllocations(card, plannedAmount);
+    const { error } = await supabase.rpc("save_walkin_fee_summary_plan", {
+      p_period_month: periodMonth,
+      p_group_key: card.groupKey,
+      p_walkin_person_id: card.walkinPersonId,
+      p_display_name: card.name,
+      p_allocations: allocations,
+    });
+    if (error) {
+      throw new Error(`Không thể lưu kế hoạch vãng lai: ${error.message}`);
+    }
+  }
+}
+
 async function savePlannedFeeSelection(formData: FormData) {
   await assertAdmin();
   const periodMonth = requiredString(formData, "period_month");
@@ -1263,6 +1329,7 @@ async function savePlannedFeeSelection(formData: FormData) {
   });
 
   await saveFeeSummaryPlanRows(rows);
+  await savePlannedWalkinSelections(formData, periodMonth);
 
   revalidatePath("/tong-hop");
   revalidatePath("/tong-hop/memfee-cards");
@@ -1325,9 +1392,48 @@ export async function markFeeSummaryCollectedAction(formData: FormData) {
   redirect(`/tong-hop?month=${summary.period_month}`);
 }
 
+export async function markWalkinFeeSummaryCollectedAction(formData: FormData) {
+  await assertAdmin();
+  const summaryId = intValue(formData, "collect_walkin_summary_id");
+  if (summaryId <= 0) throw new Error("Kế hoạch thu vãng lai không hợp lệ.");
+
+  const supabase = getSupabaseAdmin();
+  const { data: summary, error: summaryError } = await supabase
+    .from("walkin_fee_summaries")
+    .select("id,period_month")
+    .eq("id", summaryId)
+    .single();
+  if (summaryError) throw summaryError;
+
+  const paidDate = String(formData.get("paid_date") || todayInputValue()).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paidDate)) {
+    throw new Error("Ngày thu không hợp lệ.");
+  }
+  const paymentMethod = String(formData.get("payment_method") || "cash").trim();
+  const note = String(formData.get("payment_note") || "").trim() || null;
+
+  const { error: rpcError } = await supabase.rpc("mark_walkin_fee_summary_collected", {
+    p_summary_id: summaryId,
+    p_paid_date: paidDate,
+    p_payment_method: paymentMethod,
+    p_note: note,
+  });
+  if (rpcError) {
+    throw new Error(`Không thể xác nhận đã thu vãng lai: ${rpcError.message}`);
+  }
+
+  revalidatePath("/tong-hop");
+  revalidatePath("/thu");
+  revalidatePath("/thu/so-thu");
+  redirect(`/tong-hop?month=${summary.period_month}`);
+}
+
 export async function monthlyCollectionAction(formData: FormData) {
   if (String(formData.get("collect_summary_id") || "").trim()) {
     return markFeeSummaryCollectedAction(formData);
+  }
+  if (String(formData.get("collect_walkin_summary_id") || "").trim()) {
+    return markWalkinFeeSummaryCollectedAction(formData);
   }
   return saveMonthlyCollectionSelectionAction(formData);
 }
