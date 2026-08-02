@@ -5,12 +5,23 @@ import { cookies } from "next/headers";
 
 export const THU_AUTH_COOKIE = "bmt_thu_access";
 
+const MANAGEMENT_ROUTE_PREFIXES = ["/thu", "/chi", "/tong-hop"] as const;
+
 function configuredPin() {
   return process.env.THU_ACCESS_PIN || "";
 }
 
 function accessToken(pin: string) {
   return createHash("sha256").update(`bmt-thu:${pin}`).digest("hex");
+}
+
+export function isAllowedManagementPath(value: string) {
+  return MANAGEMENT_ROUTE_PREFIXES.some(
+    (prefix) =>
+      value === prefix ||
+      value.startsWith(`${prefix}/`) ||
+      value.startsWith(`${prefix}?`)
+  );
 }
 
 export function verifyThuAccessPin(submittedPin: string) {

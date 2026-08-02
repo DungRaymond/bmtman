@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { saveMemberFeeSummariesAction } from "@/app/actions";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
+import { ManagementAuthPanel } from "@/app/components/ManagementAuthPanel";
 import {
   currentMonthValue,
   getMemberFeeSummaries,
   money,
   type MemberFeeSummary,
 } from "@/lib/finance";
+import { isThuRouteAuthenticated } from "@/lib/thuAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +22,14 @@ function monthLabel(month: string) {
 }
 
 function MemberFeeCard({ card, month }: { card: MemberFeeSummary; month: string }) {
-  const statusText = card.outstanding === 0 ? "Done" : "Pending";
+  const statusText =
+    card.collectionStatus === "collected"
+      ? "Đã thu"
+      : card.collectionStatus === "partially_collected"
+        ? "Thu một phần"
+        : card.isSaved
+          ? "Đã lên kế hoạch"
+          : "Chưa lưu kế hoạch";
 
   return (
     <article className="collection-card">
@@ -56,7 +65,15 @@ function MemberFeeCard({ card, month }: { card: MemberFeeSummary; month: string 
       </div>
       <div className="collection-card-status">
         <span>Trạng thái</span>
-        <strong className={card.outstanding === 0 ? "paid" : "unpaid"}>
+        <strong
+          className={
+            card.collectionStatus === "collected"
+              ? "paid"
+              : card.collectionStatus === "partially_collected"
+                ? "partial"
+                : "unpaid"
+          }
+        >
           {statusText}
         </strong>
       </div>
@@ -66,6 +83,9 @@ function MemberFeeCard({ card, month }: { card: MemberFeeSummary; month: string 
 
 export default async function MemfeeCardsPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
+  if (!(await isThuRouteAuthenticated())) {
+    return <ManagementAuthPanel nextPath="/tong-hop/memfee-cards" />;
+  }
   const month = params.month || currentMonthValue();
   const cards = await getMemberFeeSummaries(month);
 

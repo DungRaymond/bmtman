@@ -2444,6 +2444,63 @@ button {
   color: #4ade80;
 }
 
+.monthly-collection-payment-fields {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid #334155;
+  border-radius: 12px;
+}
+
+.monthly-collection-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.monthly-collection-status strong {
+  font-weight: 800;
+}
+
+.monthly-collection-status strong.unpaid {
+  color: #f87171;
+}
+
+.monthly-collection-status strong.partial {
+  color: #fbbf24;
+}
+
+.monthly-collection-status strong.paid {
+  color: #4ade80;
+}
+
+.score-reopen-panel {
+  width: 100%;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #334155;
+}
+
+.score-reopen-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(220px, 2fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.score-reopen-form label {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 680px) {
+  .score-reopen-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 .ledger-form-actions {
   display: flex;
   gap: 8px;

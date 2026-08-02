@@ -10,7 +10,9 @@ import {
   getMonthlyMemberCards,
   normalizeScorecardPayload,
   parseScorePlayerKey,
+  todayInputValue,
   type DailyScorecardPayload,
+  type MemberFeeItem,
   type ScoreSet,
 } from "@/lib/finance";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
@@ -29,6 +31,154 @@ function intValue(formData: FormData, key: string, fallback = 0) {
   const value = Number(raw);
   if (!Number.isFinite(value)) throw new Error(`Giá trị số không hợp lệ cho ${key}`);
   return Math.max(0, Math.round(value));
+}
+
+type FeePlanRow = {
+  member_id: number;
+  period_month: string;
+  member_status: "fixed" | "former_fixed";
+  items: MemberFeeItem[];
+  total_due: number;
+  total_paid: number;
+  outstanding: number;
+  updated_at: string;
+};
+
+function normalizedFeeItems(value: unknown): MemberFeeItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (item): item is { name: string; amount: number; component?: string } =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as { name?: unknown }).name === "string" &&
+        Number.isFinite(Number((item as { amount?: unknown }).amount))
+    )
+    .map((item) => ({
+      name: item.name,
+      amount: Number(item.amount),
+      ...(item.component === "fixed" ||
+      item.component === "stake" ||
+      item.component === "giao_luu" ||
+      item.component === "other"
+        ? { component: item.component }
+        : {}),
+    }));
+}
+
+function feeItemsEqual(left: unknown, right: unknown) {
+  const leftItems = normalizedFeeItems(left);
+  const rightItems = normalizedFeeItems(right);
+  if (leftItems.length !== rightItems.length) return false;
+  return leftItems.every((item, index) => {
+    const other = rightItems[index];
+    return (
+      item.name === other.name &&
+      item.amount === other.amount &&
+      (!item.component || !other.component || item.component === other.component)
+    );
+  });
+}
+
+async function saveFeeSummaryPlanRows(rows: FeePlanRow[]) {
+  if (rows.length === 0) return;
+
+  const periodMonth = rows[0].period_month;
+  const supabase = getSupabaseAdmin();
+  const { data: existingRows, error: existingError } = await supabase
+    .from("member_fee_summaries")
+    .select("member_id,status,items,total_due")
+    .eq("period_month", periodMonth);
+  if (existingError) throw existingError;
+
+  const existingByMember = new Map(
+    (existingRows || []).map((row) => [row.member_id, row])
+  );
+  const writableRows: Array<FeePlanRow & { status: "planned" }> = [];
+
+  for (const row of rows) {
+    const existing = existingByMember.get(row.member_id);
+    if (existing && existing.status && existing.status !== "planned") {
+      if (existing.total_due !== row.total_due || !feeItemsEqual(existing.items, row.items)) {
+        throw new Error("Kế hoạch đã có tiền thu, không thể sửa lại từ màn hình tổng hợp.");
+      }
+      continue;
+    }
+    writableRows.push({ ...row, status: "planned" });
+  }
+
+  if (writableRows.length === 0) return;
+  const { error } = await supabase
+    .from("member_fee_summaries")
+    .upsert(writableRows, { onConflict: "member_id,period_month" });
+  if (error) throw error;
+}
+
+type SummaryAllocation = {
+  charge_id: number;
+  component: "fixed" | "stake" | "giao_luu" | "other";
+  amount: number;
+};
+
+const componentChargeTypes: Record<SummaryAllocation["component"], string[]> = {
+  fixed: ["monthly_fixed_fee"],
+  stake: ["monthly_stake_fee", "session_stake_fee"],
+  giao_luu: ["session_giaoluu_fee"],
+  other: ["tournament_fee", "other"],
+};
+
+function summaryItemComponent(item: MemberFeeItem): SummaryAllocation["component"] | null {
+  if (item.component) return item.component;
+  const normalized = item.name.toLocaleLowerCase("vi");
+  if (normalized.includes("quỹ")) return "fixed";
+  if (normalized.includes("độ")) return "stake";
+  if (normalized.includes("giao lưu")) return "giao_luu";
+  if (normalized.includes("khác")) return "other";
+  return null;
+}
+
+function buildSummaryAllocations(
+  card: Awaited<ReturnType<typeof getMonthlyMemberCards>>[number],
+  items: MemberFeeItem[]
+): SummaryAllocation[] {
+  const allocations: SummaryAllocation[] = [];
+  const usedCharges = new Set<number>();
+
+  for (const item of items) {
+    const component = summaryItemComponent(item);
+    if (!component || item.amount <= 0) {
+      throw new Error("Khoản thu chưa có loại phân bổ hợp lệ.");
+    }
+
+    let remaining = item.amount;
+    const candidates = card.unpaidItems.filter(
+      (charge) =>
+        !usedCharges.has(charge.chargeId) &&
+        componentChargeTypes[component].includes(charge.chargeType)
+    );
+
+    for (const charge of candidates) {
+      if (remaining <= 0) break;
+      if (remaining < charge.outstanding) {
+        throw new Error(
+          `Khoản ${item.name} phải thu đủ từng khoản phải thu; hãy điều chỉnh kế hoạch hoặc ghi nhận qua sổ thu.`
+        );
+      }
+      const amount = Math.min(remaining, charge.outstanding);
+      if (amount <= 0) continue;
+      allocations.push({ charge_id: charge.chargeId, component, amount });
+      usedCharges.add(charge.chargeId);
+      remaining -= amount;
+    }
+
+    if (remaining > 0) {
+      throw new Error(
+        `Chưa có charge hợp lệ để ghi nhận ${item.name}; hãy tạo khoản phải thu trước.`
+      );
+    }
+  }
+
+  return allocations;
 }
 
 async function ensureSession(date: string) {
@@ -56,6 +206,7 @@ async function upsertSessionCharge(input: {
   chargeType: "session_giaoluu_fee" | "session_stake_fee";
   amount: number;
   note?: string;
+  settlementRunId?: number;
 }) {
   const { error } = await getSupabaseAdmin().from("charges").upsert(
     {
@@ -63,6 +214,9 @@ async function upsertSessionCharge(input: {
       charge_type: input.chargeType,
       amount: input.amount,
       session_id: input.sessionId,
+      ...(input.settlementRunId !== undefined
+        ? { settlement_run_id: input.settlementRunId }
+        : {}),
       note: input.note || null,
     },
     { onConflict: "member_id,charge_type,session_id" }
@@ -74,6 +228,7 @@ async function ensureWalkinSessionFee(input: {
   sessionId: number;
   walkinNumber: number;
   amount: number;
+  settlementRunId?: number;
 }) {
   const { error } = await getSupabaseAdmin().from("session_walkins").upsert(
     {
@@ -83,6 +238,9 @@ async function ensureWalkinSessionFee(input: {
       amount_expected: input.amount,
       is_paid: 0,
       amount_collected: null,
+      ...(input.settlementRunId !== undefined
+        ? { settlement_run_id: input.settlementRunId }
+        : {}),
       note: "Tự tạo khi chốt sổ độ ngày",
     },
     {
@@ -91,6 +249,16 @@ async function ensureWalkinSessionFee(input: {
     }
   );
   if (error) throw error;
+  if (input.settlementRunId !== undefined) {
+    const { error: claimError } = await getSupabaseAdmin()
+      .from("session_walkins")
+      .update({ settlement_run_id: input.settlementRunId })
+      .eq("session_id", input.sessionId)
+      .eq("walkin_number", input.walkinNumber)
+      .eq("fee_type", "session_fee")
+      .is("settlement_run_id", null);
+    if (claimError) throw claimError;
+  }
 }
 
 async function saveDailyScorecard(date: string, payload: DailyScorecardPayload) {
@@ -438,11 +606,21 @@ export async function settleDailyScorecardAction(formData: FormData) {
     activeMemberRows.map((row) => [row.member_id, row.status])
   );
 
-  const { data: existingWalkins, error: existingWalkinsError } = await supabase
-    .from("session_walkins")
-    .select("id,walkin_number,walkin_name,fee_type")
-    .eq("session_id", session.session_id);
-  if (existingWalkinsError) throw existingWalkinsError;
+  const { data: runId, error: runError } = await supabase.rpc(
+    "create_daily_scorecard_settlement_run",
+    { p_score_date: date }
+  );
+  if (runError || !runId) {
+    throw new Error(runError?.message || "Không tạo được settlement batch cho ngày.");
+  }
+  const settlementRunId = Number(runId);
+
+  try {
+    const { data: existingWalkins, error: existingWalkinsError } = await supabase
+      .from("session_walkins")
+      .select("id,walkin_number,walkin_name,fee_type")
+      .eq("session_id", session.session_id);
+    if (existingWalkinsError) throw existingWalkinsError;
   const guestNumbers = new Map<string, number>();
   for (const row of existingWalkins || []) {
     if (row.fee_type === "session_fee" && row.walkin_name) {
@@ -457,6 +635,7 @@ export async function settleDailyScorecardAction(formData: FormData) {
         count: 1,
         name,
         amount: walkinFee,
+        settlementRunId,
       });
       const { data: created, error: createdError } = await supabase
         .from("session_walkins")
@@ -486,6 +665,7 @@ export async function settleDailyScorecardAction(formData: FormData) {
         session_id: session.session_id,
         member_id: memberId,
         stake_points: stakePoints,
+        settlement_run_id: settlementRunId,
       },
       { onConflict: "session_id,member_id" }
     );
@@ -499,6 +679,7 @@ export async function settleDailyScorecardAction(formData: FormData) {
           chargeType: "session_giaoluu_fee",
           amount: formerFixedFee,
           note: "Tự tạo khi chốt sổ độ ngày",
+          settlementRunId,
         }),
         upsertSessionCharge({
           memberId,
@@ -506,6 +687,7 @@ export async function settleDailyScorecardAction(formData: FormData) {
           chargeType: "session_stake_fee",
           amount: stakePoints,
           note: "Tự tổng hợp từ thẻ ghi độ ngày",
+          settlementRunId,
         }),
       ]);
     }
@@ -516,6 +698,7 @@ export async function settleDailyScorecardAction(formData: FormData) {
       sessionId: session.session_id,
       walkinNumber,
       amount: walkinFee,
+      settlementRunId,
     })
   );
 
@@ -528,6 +711,7 @@ export async function settleDailyScorecardAction(formData: FormData) {
         amount_expected: amount,
         is_paid: 1,
         amount_collected: amount,
+        settlement_run_id: settlementRunId,
         note: "Tự tổng hợp từ thẻ ghi độ ngày",
       },
       { onConflict: "session_id,walkin_number,fee_type" }
@@ -537,18 +721,41 @@ export async function settleDailyScorecardAction(formData: FormData) {
 
   await Promise.all([...memberUpdates, ...walkinFeeUpdates, ...walkinStakeUpdates]);
 
-  const { error } = await supabase
-    .from("daily_scorecards")
-    .update({
-      settled_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("score_date", date);
-  if (error) throw error;
+    const { error: finalizeError } = await supabase.rpc(
+      "finalize_daily_scorecard_settlement",
+      { p_run_id: settlementRunId, p_score_date: date }
+    );
+    if (finalizeError) throw finalizeError;
+  } catch (error) {
+    const { error: abortError } = await supabase.rpc(
+      "abort_daily_scorecard_settlement",
+      { p_run_id: settlementRunId }
+    );
+    if (abortError) console.error("Không thể dọn settlement batch lỗi", abortError);
+    throw error;
+  }
 
   revalidatePath("/");
   revalidatePath("/thu");
   revalidatePath("/tong-hop");
+  redirect(`/?date=${date}`);
+}
+
+export async function reopenDailyScorecardAction(formData: FormData) {
+  await assertAdmin();
+  const date = requiredString(formData, "date");
+  const reason = requiredString(formData, "reason");
+  if (reason.length > 500) throw new Error("Lý do mở lại không được quá 500 ký tự.");
+
+  const { error } = await getSupabaseAdmin().rpc("reopen_daily_scorecard", {
+    p_score_date: date,
+    p_reason: reason,
+  });
+  if (error) throw new Error(`Không thể mở lại ngày: ${error.message}`);
+
+  revalidatePath("/");
+  revalidatePath("/tong-hop");
+  revalidatePath("/tong-hop/tien-do");
   redirect(`/?date=${date}`);
 }
 
@@ -966,12 +1173,59 @@ export async function generateMonthlyFixedFeesAction(formData: FormData) {
     if (error) throw error;
   }
 
+  if (fixedMembers.length > 0) {
+    const [periodYear, periodNumber] = periodMonth.split("-").map(Number);
+    const nextMonthDate = new Date(Date.UTC(periodYear, periodNumber, 1))
+      .toISOString()
+      .slice(0, 10);
+    const { data: stakeRows, error: stakeError } = await supabase
+      .from("session_stake_points")
+      .select("member_id,stake_points,sessions!inner(session_date)")
+      .in("member_id", fixedMembers.map((row) => row.member_id))
+      .gte("sessions.session_date", `${periodMonth}-01`)
+      .lt("sessions.session_date", nextMonthDate);
+    if (stakeError) throw stakeError;
+
+    const stakeByMember = new Map<number, number>();
+    for (const row of stakeRows || []) {
+      const session = Array.isArray(row.sessions) ? row.sessions[0] : row.sessions;
+      if (!session?.session_date?.startsWith(periodMonth)) continue;
+      stakeByMember.set(
+        row.member_id,
+        (stakeByMember.get(row.member_id) || 0) + Math.max(Number(row.stake_points) || 0, 0)
+      );
+    }
+
+    for (const row of fixedMembers) {
+      const stakeAmount = stakeByMember.get(row.member_id) || 0;
+      if (stakeAmount <= 0) continue;
+      const { data: existing, error: findError } = await supabase
+        .from("charges")
+        .select("charge_id")
+        .eq("member_id", row.member_id)
+        .eq("charge_type", "monthly_stake_fee")
+        .eq("period_month", periodMonth)
+        .maybeSingle();
+      if (findError) throw findError;
+      if (existing) continue;
+
+      const { error } = await supabase.from("charges").insert({
+        member_id: row.member_id,
+        charge_type: "monthly_stake_fee",
+        amount: stakeAmount,
+        period_month: periodMonth,
+        note: `Tự gom tiền độ tháng ${periodMonth}`,
+      });
+      if (error) throw error;
+    }
+  }
+
   revalidatePath("/thu");
   revalidatePath("/tong-hop");
   redirect(`/tong-hop?month=${periodMonth}`);
 }
 
-export async function saveMonthlyCollectionSelectionAction(formData: FormData) {
+async function savePlannedFeeSelection(formData: FormData) {
   await assertAdmin();
   const periodMonth = requiredString(formData, "period_month");
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodMonth)) {
@@ -990,7 +1244,9 @@ export async function saveMonthlyCollectionSelectionAction(formData: FormData) {
       const prefix = `member_${card.memberId}_${component.key}`;
       if (formData.get(`${prefix}_selected`) !== "on") return [];
       const amount = intValue(formData, `${prefix}_amount`);
-      return amount > 0 ? [{ name: component.label, amount }] : [];
+      return amount > 0
+        ? [{ name: component.label, amount, component: component.key }]
+        : [];
     });
     const totalDue = items.reduce((sum, item) => sum + item.amount, 0);
     const totalPaid = Math.min(card.totalPaid, totalDue);
@@ -1006,16 +1262,64 @@ export async function saveMonthlyCollectionSelectionAction(formData: FormData) {
     };
   });
 
-  if (rows.length > 0) {
-    const { error } = await getSupabaseAdmin()
-      .from("member_fee_summaries")
-      .upsert(rows, { onConflict: "member_id,period_month" });
-    if (error) throw error;
-  }
+  await saveFeeSummaryPlanRows(rows);
 
   revalidatePath("/tong-hop");
   revalidatePath("/tong-hop/memfee-cards");
   redirect(`/tong-hop?month=${periodMonth}`);
+}
+
+export async function saveMonthlyCollectionSelectionAction(formData: FormData) {
+  return savePlannedFeeSelection(formData);
+}
+
+export async function markFeeSummaryCollectedAction(formData: FormData) {
+  await assertAdmin();
+  const summaryId = intValue(formData, "collect_summary_id");
+  if (summaryId <= 0) throw new Error("Kế hoạch thu không hợp lệ.");
+
+  const supabase = getSupabaseAdmin();
+  const { data: summary, error: summaryError } = await supabase
+    .from("member_fee_summaries")
+    .select("id,member_id,period_month,status,items,total_due")
+    .eq("id", summaryId)
+    .single();
+  if (summaryError) throw summaryError;
+  if (summary.status === "collected") {
+    revalidatePath("/tong-hop");
+    revalidatePath("/tong-hop/memfee-cards");
+    redirect(`/tong-hop?month=${summary.period_month}`);
+  }
+
+  const cards = await getMonthlyMemberCards(summary.period_month);
+  const card = cards.find((row) => row.memberId === summary.member_id);
+  if (!card) throw new Error("Không tìm thấy dữ liệu thành viên của kế hoạch thu.");
+
+  const items = normalizedFeeItems(summary.items);
+  const allocations = buildSummaryAllocations(card, items);
+  if (allocations.length === 0) throw new Error("Kế hoạch thu chưa có khoản cần ghi nhận.");
+
+  const paidDate = String(formData.get("paid_date") || todayInputValue()).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paidDate)) {
+    throw new Error("Ngày thu không hợp lệ.");
+  }
+  const paymentMethod = String(formData.get("payment_method") || "cash").trim();
+  const note = String(formData.get("payment_note") || "").trim() || "Thu từ kế hoạch tháng";
+
+  const { error: rpcError } = await supabase.rpc("mark_fee_summary_collected", {
+    p_summary_id: summaryId,
+    p_allocations: allocations,
+    p_paid_date: paidDate,
+    p_payment_method: paymentMethod,
+    p_recorded_by: null,
+    p_note: note,
+  });
+  if (rpcError) throw new Error(`Không thể xác nhận đã thu: ${rpcError.message}`);
+
+  revalidatePath("/tong-hop");
+  revalidatePath("/tong-hop/memfee-cards");
+  revalidatePath("/thu");
+  redirect(`/tong-hop?month=${summary.period_month}`);
 }
 
 export async function saveMemberFeeSummariesAction(formData: FormData) {
@@ -1023,11 +1327,11 @@ export async function saveMemberFeeSummariesAction(formData: FormData) {
   const periodMonth = requiredString(formData, "period_month");
   const cards = await getMonthlyMemberCards(periodMonth);
   const rows = cards.map((card) => {
-    const items: { name: string; amount: number }[] = [];
-    if (card.fixedFee > 0) items.push({ name: "Tiền quỹ", amount: card.fixedFee });
-    if (card.stakeFee > 0) items.push({ name: "Tiền độ", amount: card.stakeFee });
-    if (card.giaoLuuFee > 0) items.push({ name: "Phí giao lưu", amount: card.giaoLuuFee });
-    if (card.otherFee > 0) items.push({ name: "Khoản khác", amount: card.otherFee });
+    const items: MemberFeeItem[] = [];
+    if (card.fixedFee > 0) items.push({ name: "Tiền quỹ", amount: card.fixedFee, component: "fixed" });
+    if (card.stakeFee > 0) items.push({ name: "Tiền độ", amount: card.stakeFee, component: "stake" });
+    if (card.giaoLuuFee > 0) items.push({ name: "Phí giao lưu", amount: card.giaoLuuFee, component: "giao_luu" });
+    if (card.otherFee > 0) items.push({ name: "Khoản khác", amount: card.otherFee, component: "other" });
     return {
       member_id: card.memberId,
       period_month: periodMonth,
@@ -1040,17 +1344,7 @@ export async function saveMemberFeeSummariesAction(formData: FormData) {
     };
   });
 
-  if (rows.length > 0) {
-    const { error } = await getSupabaseAdmin()
-      .from("member_fee_summaries")
-      .upsert(rows, { onConflict: "member_id,period_month" });
-    if (error?.code === "23514") {
-      throw new Error(
-        `Dữ liệu thẻ không vượt qua ràng buộc Supabase (${error.code}): ${error.message}`
-      );
-    }
-    if (error) throw error;
-  }
+  await saveFeeSummaryPlanRows(rows);
 
   revalidatePath("/tong-hop/memfee-cards");
   redirect(`/tong-hop/memfee-cards?month=${periodMonth}`);

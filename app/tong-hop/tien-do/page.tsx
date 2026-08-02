@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
+import { ManagementAuthPanel } from "@/app/components/ManagementAuthPanel";
 import {
   currentMonthValue,
   formatDateVN,
   getMonthlyStakePeople,
   money,
 } from "@/lib/finance";
+import { isThuRouteAuthenticated } from "@/lib/thuAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,9 @@ type PageProps = {
 
 export default async function StakeSummaryPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
+  if (!(await isThuRouteAuthenticated())) {
+    return <ManagementAuthPanel nextPath="/tong-hop/tien-do" />;
+  }
   const month = /^\d{4}-\d{2}$/.test(params.month || "")
     ? params.month as string
     : currentMonthValue();

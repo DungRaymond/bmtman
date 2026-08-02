@@ -1,5 +1,6 @@
 import { createExpenseAction } from "@/app/actions";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
+import { ManagementAuthPanel } from "@/app/components/ManagementAuthPanel";
 import {
   currentMonthValue,
   expenseCategoryLabels,
@@ -8,6 +9,7 @@ import {
   money,
   todayInputValue,
 } from "@/lib/finance";
+import { isThuRouteAuthenticated } from "@/lib/thuAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +19,9 @@ type PageProps = {
 
 export default async function ChiPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
+  if (!(await isThuRouteAuthenticated())) {
+    return <ManagementAuthPanel nextPath="/chi" />;
+  }
   const month = params.month || currentMonthValue();
   const expenses = await getExpenses(month);
   const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);

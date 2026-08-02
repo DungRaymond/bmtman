@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   THU_AUTH_COOKIE,
+  isAllowedManagementPath,
   thuAccessCookieValue,
   verifyThuAccessPin,
 } from "@/lib/thuAuth";
@@ -11,19 +12,21 @@ import {
 export async function loginThuAction(formData: FormData) {
   const submittedPin = String(formData.get("access_pin") || "");
   const nextPath = String(formData.get("next") || "/thu");
-  const safeNextPath = nextPath.startsWith("/thu") ? nextPath : "/thu";
+  const safeNextPath = isAllowedManagementPath(nextPath) ? nextPath : "/thu";
   if (!verifyThuAccessPin(submittedPin)) {
     redirect(`/thu?auth=invalid&next=${encodeURIComponent(safeNextPath)}`);
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(THU_AUTH_COOKIE, "", {
-    httpOnly: true,
-    secure: true,
-    sameSite: "strict",
-    path: "/thu",
-    maxAge: 0,
-  });
+  for (const path of ["/thu", "/"]) {
+    cookieStore.set(THU_AUTH_COOKIE, "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      path,
+      maxAge: 0,
+    });
+  }
   cookieStore.set(THU_AUTH_COOKIE, thuAccessCookieValue(), {
     httpOnly: true,
     secure: true,

@@ -64,6 +64,11 @@ export type DailyScorecard = {
   payload: DailyScorecardPayload;
   settled_at: string | null;
   updated_at: string | null;
+  latest_reopen?: {
+    reopened_at: string;
+    reason: string;
+  } | null;
+  can_reopen?: boolean;
 };
 
 export type MonthlyStakeTurn = {
@@ -192,6 +197,7 @@ export type MonthlyMemberCard = {
   currentUnpaid: number;
   unpaidItems: {
     chargeId: number;
+    chargeType: string;
     label: string;
     amount: number;
     paid: number;
@@ -204,9 +210,16 @@ export type MonthlyMemberCard = {
 export type MemberFeeItem = {
   name: string;
   amount: number;
+  component?: "fixed" | "stake" | "giao_luu" | "other";
 };
 
+export type MemberFeeCollectionStatus =
+  | "planned"
+  | "partially_collected"
+  | "collected";
+
 export type MemberFeeSummary = {
+  summaryId?: number;
   memberId: number;
   memberNumber: string;
   name: string;
@@ -215,6 +228,8 @@ export type MemberFeeSummary = {
   totalDue: number;
   totalPaid: number;
   outstanding: number;
+  collectionStatus: MemberFeeCollectionStatus;
+  collectedAt?: string | null;
   isSaved?: boolean;
 };
 
@@ -521,12 +536,33 @@ export const getDailyScorecard = cache(async function getDailyScorecard(date: st
     } satisfies DailyScorecard;
   }
 
-  const { data, error } = await getSupabaseAdmin()
-    .from("daily_scorecards")
-    .select("*")
-    .eq("score_date", date)
-    .maybeSingle();
-  if (error) throw error;
+  const supabase = getSupabaseAdmin();
+  const [scorecardResult, reopenResult, settlementResult] = await Promise.all([
+    supabase
+      .from("daily_scorecards")
+      .select("*")
+      .eq("score_date", date)
+      .maybeSingle(),
+    supabase
+      .from("daily_scorecard_reopen_log")
+      .select("reopened_at,reason")
+      .eq("score_date", date)
+      .order("reopened_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("daily_scorecard_settlement_runs")
+      .select("run_id")
+      .eq("score_date", date)
+      .eq("status", "settled")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (scorecardResult.error) throw scorecardResult.error;
+  const reopenLog = reopenResult.error ? null : reopenResult.data;
+  const canReopen = settlementResult.error ? false : !!settlementResult.data;
+  const data = scorecardResult.data;
   if (!data) {
     return {
       score_date: date,
@@ -540,6 +576,8 @@ export const getDailyScorecard = cache(async function getDailyScorecard(date: st
   return {
     ...row,
     payload: normalizeScorecardPayload(row.payload),
+    latest_reopen: reopenLog,
+    can_reopen: canReopen,
   } satisfies DailyScorecard;
 });
 
@@ -919,6 +957,7 @@ export async function getMonthlyMemberCards(month: string) {
       }
       card.unpaidItems.push({
         chargeId: charge.charge_id,
+        chargeType: charge.charge_type,
         label: `${chargeTypeLabels[charge.charge_type] || charge.charge_type} (${period})`,
         amount,
         paid: paidThroughMonth,
@@ -949,6 +988,7 @@ export async function getMonthlyMemberCards(month: string) {
       card.currentUnpaid += outstandingAtMonthEnd;
       card.unpaidItems.push({
         chargeId: charge.charge_id,
+        chargeType: charge.charge_type,
         label: chargeTypeLabels[charge.charge_type] || charge.charge_type,
         amount,
         paid: paidThroughMonth,
@@ -995,7 +1035,7 @@ export async function getMemberFeeSummaries(month: string) {
 
   const { data: savedRows, error: savedError } = await getSupabaseAdmin()
     .from("member_fee_summaries")
-    .select("member_id,member_status,items,total_due,total_paid,outstanding,members(name)")
+    .select("id,member_id,member_status,status,collected_at,items,total_due,total_paid,outstanding,members(name)")
     .eq("period_month", month);
 
   if (!savedError && savedRows && savedRows.length > 0) {
@@ -1011,10 +1051,17 @@ export async function getMemberFeeSummaries(month: string) {
           ).map((item) => ({
             name: memberFeeItemName(item.name),
             amount: Number(item.amount),
+            ...(item.component === "fixed" ||
+            item.component === "stake" ||
+            item.component === "giao_luu" ||
+            item.component === "other"
+              ? { component: item.component }
+              : {}),
           }))
         : [];
 
       return {
+        summaryId: row.id,
         memberId: row.member_id,
         memberNumber: String(row.member_id).padStart(2, "0"),
         name: member?.name || `Thành viên ${row.member_id}`,
@@ -1023,6 +1070,11 @@ export async function getMemberFeeSummaries(month: string) {
         totalDue: row.total_due || 0,
         totalPaid: row.total_paid || 0,
         outstanding: row.outstanding || 0,
+        collectionStatus:
+          row.status === "collected" || row.status === "partially_collected"
+            ? row.status
+            : "planned",
+        collectedAt: row.collected_at || null,
         isSaved: true,
       };
     });
@@ -1033,11 +1085,12 @@ export async function getMemberFeeSummaries(month: string) {
 
 function memberCardToFeeSummary(card: MonthlyMemberCard): MemberFeeSummary {
   const items: MemberFeeItem[] = [];
-  if (card.fixedFee > 0) items.push({ name: "Tiền quỹ", amount: card.fixedFee });
-  if (card.stakeFee > 0) items.push({ name: "Tiền độ", amount: card.stakeFee });
-  if (card.giaoLuuFee > 0) items.push({ name: "Phí giao lưu", amount: card.giaoLuuFee });
-  if (card.otherFee > 0) items.push({ name: "Khoản khác", amount: card.otherFee });
+  if (card.fixedFee > 0) items.push({ name: "Tiền quỹ", amount: card.fixedFee, component: "fixed" });
+  if (card.stakeFee > 0) items.push({ name: "Tiền độ", amount: card.stakeFee, component: "stake" });
+  if (card.giaoLuuFee > 0) items.push({ name: "Phí giao lưu", amount: card.giaoLuuFee, component: "giao_luu" });
+  if (card.otherFee > 0) items.push({ name: "Khoản khác", amount: card.otherFee, component: "other" });
   return {
+    summaryId: undefined,
     memberId: card.memberId,
     memberNumber: card.memberNumber,
     name: card.name,
@@ -1046,6 +1099,8 @@ function memberCardToFeeSummary(card: MonthlyMemberCard): MemberFeeSummary {
     totalDue: items.reduce((sum, item) => sum + item.amount, 0),
     totalPaid: card.totalPaid,
     outstanding: card.outstanding,
+    collectionStatus: "planned",
+    collectedAt: null,
     isSaved: false,
   };
 }

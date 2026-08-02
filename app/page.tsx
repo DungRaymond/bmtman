@@ -1,4 +1,4 @@
-import { settleDailyScorecardAction } from "@/app/actions";
+import { reopenDailyScorecardAction, settleDailyScorecardAction } from "@/app/actions";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import {
   ScoreEntryCard,
@@ -19,6 +19,7 @@ import {
   type Member,
   type ScorePlayer,
 } from "@/lib/finance";
+import { isThuRouteAuthenticated } from "@/lib/thuAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,7 @@ export default async function Home({ searchParams }: PageProps) {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.date || "")
     ? params.date as string
     : today;
+  const canManage = await isThuRouteAuthenticated();
   const [members, activeMembers, walkinNames, scorecard, rawMonthlyStakePeople] = await Promise.all([
     getMembers(),
     getActiveMembers(date),
@@ -217,6 +219,27 @@ export default async function Home({ searchParams }: PageProps) {
             Chốt sổ độ của ngày
           </button>
         </form>
+        {isSettled && canManage && scorecard.can_reopen && (
+          <div className="score-reopen-panel">
+            {scorecard.latest_reopen && (
+              <p className="muted">
+                Mở lại gần nhất: {scorecard.latest_reopen.reopened_at} — {scorecard.latest_reopen.reason}
+              </p>
+            )}
+            <form className="score-reopen-form" action={reopenDailyScorecardAction}>
+              <input type="hidden" name="date" value={date} />
+              <label htmlFor="score-reopen-reason">Lý do mở lại</label>
+              <input
+                id="score-reopen-reason"
+                name="reason"
+                maxLength={500}
+                placeholder="VD: sửa nhầm người thua"
+                required
+              />
+              <button className="btn-warning" type="submit">Mở lại ngày này</button>
+            </form>
+          </div>
+        )}
       </section>
     </main>
   );

@@ -9,7 +9,7 @@ import { FormerFixedReceivableForm } from "@/app/thu/FormerFixedReceivableForm";
 import { WalkinReceivableForm } from "@/app/thu/WalkinReceivableForm";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import { loginThuAction } from "@/app/thu/auth-actions";
-import { isThuRouteAuthenticated } from "@/lib/thuAuth";
+import { isAllowedManagementPath, isThuRouteAuthenticated } from "@/lib/thuAuth";
 import {
   chargeTypeLabels,
   currentMonthValue,
@@ -73,7 +73,7 @@ export default async function ThuPage({ searchParams }: PageProps) {
             <input
               type="hidden"
               name="next"
-              value={params.next?.startsWith("/thu") ? params.next : "/thu"}
+              value={params.next && isAllowedManagementPath(params.next) ? params.next : "/thu"}
             />
             <div>
               <label>Mã bảo mật</label>

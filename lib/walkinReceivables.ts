@@ -7,6 +7,7 @@ type CreateWalkinInput = {
   count: number;
   name: string | null;
   amount: number;
+  settlementRunId?: number;
 };
 
 function canUseLegacyFallback(code?: string) {
@@ -15,12 +16,21 @@ function canUseLegacyFallback(code?: string) {
 
 export async function createWalkinReceivables(input: CreateWalkinInput) {
   const supabase = getSupabaseAdmin();
-  const { error: rpcError } = await supabase.rpc("create_walkin_receivables", {
-    p_session_id: input.sessionId,
-    p_walkin_count: input.count,
-    p_walkin_name: input.name,
-    p_amount: input.amount,
-  });
+  const rpcParams = input.settlementRunId
+    ? {
+        p_session_id: input.sessionId,
+        p_walkin_count: input.count,
+        p_walkin_name: input.name,
+        p_amount: input.amount,
+        p_settlement_run_id: input.settlementRunId,
+      }
+    : {
+        p_session_id: input.sessionId,
+        p_walkin_count: input.count,
+        p_walkin_name: input.name,
+        p_amount: input.amount,
+      };
+  const { error: rpcError } = await supabase.rpc("create_walkin_receivables", rpcParams);
   if (!rpcError) return;
   if (!canUseLegacyFallback(rpcError.code)) {
     throw new Error(`Không tạo được khoản vãng lai (${rpcError.code}): ${rpcError.message}`);
@@ -46,6 +56,9 @@ export async function createWalkinReceivables(input: CreateWalkinInput) {
       amount_expected: input.amount,
       is_paid: 0,
       amount_collected: null,
+      ...(input.settlementRunId
+        ? { settlement_run_id: input.settlementRunId }
+        : {}),
     }));
     const { error } = await supabase.from("session_walkins").insert(rows);
     if (!error) return;

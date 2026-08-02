@@ -1,10 +1,13 @@
 import {
   createMonthlySnapshotAction,
   generateMonthlyFixedFeesAction,
+  markFeeSummaryCollectedAction,
   saveMonthlyCollectionSelectionAction,
 } from "@/app/actions";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import { MoneyRatio } from "@/app/components/MoneyRatio";
+import { ManagementAuthPanel } from "@/app/components/ManagementAuthPanel";
+import { ConfirmCollectionButton } from "@/app/tong-hop/ConfirmCollectionButton";
 import {
   currentMonthValue,
   chargeTypeLabels,
@@ -15,10 +18,12 @@ import {
   getMemberPaymentsByMonth,
   getWalkinsByMonth,
   money,
+  todayInputValue,
   walkinSessionDate,
   type WalkinByDay,
   type MonthlyMemberPayment,
 } from "@/lib/finance";
+import { isThuRouteAuthenticated } from "@/lib/thuAuth";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +82,9 @@ function savedComponentAmount(
 
 export default async function TongHopPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
+  if (!(await isThuRouteAuthenticated())) {
+    return <ManagementAuthPanel nextPath="/tong-hop" />;
+  }
   const month = params.month || currentMonthValue();
   const [summary, walkins, memberPayments, monthlyCards, feeSummaries] =
     await Promise.all([
@@ -235,7 +243,7 @@ export default async function TongHopPage({ searchParams }: PageProps) {
             <input name="period_month" type="month" defaultValue={month} required />
           </div>
           <button className="btn-primary" type="submit">
-            Tạo phí 500k cho thành viên cố định
+            Tạo phí quỹ và gom tiền độ tháng
           </button>
         </form>
         <p className="muted" style={{ marginTop: 10 }}>
@@ -254,6 +262,31 @@ export default async function TongHopPage({ searchParams }: PageProps) {
         ) : (
           <form action={saveMonthlyCollectionSelectionAction}>
             <input type="hidden" name="period_month" value={month} />
+            <div className="grid3 monthly-collection-payment-fields">
+              <div>
+                <label htmlFor="collection-paid-date">Ngày ghi nhận thu</label>
+                <input
+                  id="collection-paid-date"
+                  name="paid_date"
+                  type="date"
+                  defaultValue={todayInputValue()}
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="collection-payment-method">Hình thức thu</label>
+                <select id="collection-payment-method" name="payment_method" defaultValue="cash">
+                  <option value="cash">Tiền mặt</option>
+                  <option value="bank_transfer">Chuyển khoản</option>
+                  <option value="e_wallet">Ví điện tử</option>
+                  <option value="other">Khác</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="collection-payment-note">Ghi chú thu</label>
+                <input id="collection-payment-note" name="payment_note" placeholder="Không bắt buộc" />
+              </div>
+            </div>
             <div className="monthly-collection-grid">
               {monthlyCards.map((card) => {
                 const saved = feeSummaryByMember.get(card.memberId);
@@ -300,12 +333,39 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                         );
                       })}
                     </div>
+                    <div className="monthly-collection-status">
+                      <span>Trạng thái thu</span>
+                      <strong
+                        className={
+                          saved?.collectionStatus === "collected"
+                            ? "paid"
+                            : saved?.collectionStatus === "partially_collected"
+                              ? "partial"
+                              : "unpaid"
+                        }
+                      >
+                        {saved?.collectionStatus === "collected"
+                          ? "Đã thu"
+                          : saved?.collectionStatus === "partially_collected"
+                            ? "Thu một phần"
+                            : saved?.isSaved
+                              ? "Đã lên kế hoạch"
+                              : "Chưa lưu kế hoạch"}
+                      </strong>
+                      {saved?.summaryId && saved.collectionStatus !== "collected" && (
+                        <ConfirmCollectionButton
+                          formAction={markFeeSummaryCollectedAction}
+                          name="collect_summary_id"
+                          value={String(saved.summaryId)}
+                        />
+                      )}
+                    </div>
                   </article>
                 );
               })}
             </div>
             <button className="btn-primary" type="submit">
-              Chốt các khoản đã chọn
+              Lưu kế hoạch thu
             </button>
           </form>
         )}
