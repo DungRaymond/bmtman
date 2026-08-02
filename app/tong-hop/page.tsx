@@ -1,8 +1,7 @@
 import {
   createMonthlySnapshotAction,
   generateMonthlyFixedFeesAction,
-  markFeeSummaryCollectedAction,
-  saveMonthlyCollectionSelectionAction,
+  monthlyCollectionAction,
 } from "@/app/actions";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import { MoneyRatio } from "@/app/components/MoneyRatio";
@@ -260,7 +259,8 @@ export default async function TongHopPage({ searchParams }: PageProps) {
         {monthlyCards.length === 0 ? (
           <div className="empty">Chưa có thành viên hoặc chưa cấu hình dữ liệu thu.</div>
         ) : (
-          <form action={saveMonthlyCollectionSelectionAction}>
+          <form action={monthlyCollectionAction}>
+            <ConfirmCollectionButton />
             <input type="hidden" name="period_month" value={month} />
             <div className="grid3 monthly-collection-payment-fields">
               <div>
@@ -352,12 +352,16 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                               ? "Đã lên kế hoạch"
                               : "Chưa lưu kế hoạch"}
                       </strong>
-                      {saved?.summaryId && saved.collectionStatus !== "collected" && (
-                        <ConfirmCollectionButton
-                          formAction={markFeeSummaryCollectedAction}
+                      {saved?.summaryId && saved.outstanding > 0 && saved.collectionStatus !== "collected" && (
+                        <button
+                          className="btn-primary small-btn"
+                          type="submit"
                           name="collect_summary_id"
                           value={String(saved.summaryId)}
-                        />
+                          data-confirm-collection
+                        >
+                          Xác nhận đã thu
+                        </button>
                       )}
                     </div>
                   </article>

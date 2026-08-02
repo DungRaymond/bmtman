@@ -233,6 +233,22 @@ export type MemberFeeSummary = {
   isSaved?: boolean;
 };
 
+export function resolveMemberFeeCollectionStatus(
+  status: unknown,
+  totalDue: number,
+  totalPaid: number,
+  outstanding: number
+): MemberFeeCollectionStatus {
+  if (status === "collected") return "collected";
+
+  const due = Math.max(Number(totalDue) || 0, 0);
+  const paid = Math.max(Number(totalPaid) || 0, 0);
+  const debt = Math.max(Number(outstanding) || 0, 0);
+  if (due > 0 && (debt <= 0 || paid >= due)) return "collected";
+  if (status === "partially_collected" || paid > 0) return "partially_collected";
+  return "planned";
+}
+
 type ActiveMemberRow = {
   member_id: number;
   status: "fixed" | "former_fixed";
@@ -1060,6 +1076,10 @@ export async function getMemberFeeSummaries(month: string) {
           }))
         : [];
 
+      const totalDue = Math.max(Number(row.total_due) || 0, 0);
+      const totalPaid = Math.min(Math.max(Number(row.total_paid) || 0, 0), totalDue);
+      const outstanding = Math.max(totalDue - totalPaid, 0);
+
       return {
         summaryId: row.id,
         memberId: row.member_id,
@@ -1067,13 +1087,15 @@ export async function getMemberFeeSummaries(month: string) {
         name: member?.name || `Thành viên ${row.member_id}`,
         status: row.member_status as "fixed" | "former_fixed",
         items,
-        totalDue: row.total_due || 0,
-        totalPaid: row.total_paid || 0,
-        outstanding: row.outstanding || 0,
-        collectionStatus:
-          row.status === "collected" || row.status === "partially_collected"
-            ? row.status
-            : "planned",
+        totalDue,
+        totalPaid,
+        outstanding,
+        collectionStatus: resolveMemberFeeCollectionStatus(
+          row.status,
+          totalDue,
+          totalPaid,
+          outstanding
+        ),
         collectedAt: row.collected_at || null,
         isSaved: true,
       };

@@ -1281,11 +1281,14 @@ export async function markFeeSummaryCollectedAction(formData: FormData) {
   const supabase = getSupabaseAdmin();
   const { data: summary, error: summaryError } = await supabase
     .from("member_fee_summaries")
-    .select("id,member_id,period_month,status,items,total_due")
+    .select("id,member_id,period_month,status,items,total_due,total_paid,outstanding")
     .eq("id", summaryId)
     .single();
   if (summaryError) throw summaryError;
-  if (summary.status === "collected") {
+  const totalDue = Math.max(Number(summary.total_due) || 0, 0);
+  const totalPaid = Math.max(Number(summary.total_paid) || 0, 0);
+  const outstanding = Math.max(totalDue - totalPaid, 0);
+  if (summary.status === "collected" || totalDue <= 0 || outstanding <= 0) {
     revalidatePath("/tong-hop");
     revalidatePath("/tong-hop/memfee-cards");
     redirect(`/tong-hop?month=${summary.period_month}`);
@@ -1320,6 +1323,13 @@ export async function markFeeSummaryCollectedAction(formData: FormData) {
   revalidatePath("/tong-hop/memfee-cards");
   revalidatePath("/thu");
   redirect(`/tong-hop?month=${summary.period_month}`);
+}
+
+export async function monthlyCollectionAction(formData: FormData) {
+  if (String(formData.get("collect_summary_id") || "").trim()) {
+    return markFeeSummaryCollectedAction(formData);
+  }
+  return saveMonthlyCollectionSelectionAction(formData);
 }
 
 export async function saveMemberFeeSummariesAction(formData: FormData) {
