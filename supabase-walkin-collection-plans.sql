@@ -127,7 +127,7 @@ DECLARE
   summary_row walkin_fee_summaries%ROWTYPE;
   walkin_row session_walkins%ROWTYPE;
   allocation_item record;
-  summary_id bigint;
+  v_summary_id bigint;
   conflicting_summary_id bigint;
   allocated_total integer := 0;
   normalized_row_group_key text;
@@ -170,8 +170,9 @@ BEGIN
   END IF;
 
   IF summary_row.id IS NOT NULL THEN
-    summary_id := summary_row.id;
-    DELETE FROM walkin_fee_summary_items WHERE summary_id = summary_id;
+    v_summary_id := summary_row.id;
+    DELETE FROM public.walkin_fee_summary_items AS item
+    WHERE item.summary_id = summary_row.id;
     UPDATE walkin_fee_summaries
     SET walkin_person_id = p_walkin_person_id,
         display_name = btrim(p_display_name),
@@ -183,7 +184,7 @@ BEGIN
         payment_note = NULL,
         collected_at = NULL,
         updated_at = now()
-    WHERE id = summary_id;
+    WHERE id = v_summary_id;
   ELSE
     INSERT INTO walkin_fee_summaries (
       period_month,
@@ -205,7 +206,7 @@ BEGIN
       0,
       'planned'
     )
-    RETURNING id INTO summary_id;
+    RETURNING id INTO v_summary_id;
   END IF;
 
   FOR allocation_item IN
@@ -255,7 +256,7 @@ BEGIN
     JOIN walkin_fee_summaries existing_summary ON existing_summary.id = existing_item.summary_id
     WHERE existing_item.session_walkin_id = walkin_row.id
       AND existing_summary.status = 'planned'
-      AND existing_summary.id <> summary_id
+      AND existing_summary.id <> v_summary_id
     LIMIT 1
     FOR UPDATE OF existing_summary;
 
@@ -264,7 +265,7 @@ BEGIN
     END IF;
 
     INSERT INTO walkin_fee_summary_items (summary_id, session_walkin_id, allocated_amount)
-    VALUES (summary_id, walkin_row.id, allocation_item.amount);
+    VALUES (v_summary_id, walkin_row.id, allocation_item.amount);
     allocated_total := allocated_total + allocation_item.amount;
   END LOOP;
 
@@ -273,9 +274,9 @@ BEGIN
       total_paid = 0,
       outstanding = allocated_total,
       updated_at = now()
-  WHERE id = summary_id;
+  WHERE id = v_summary_id;
 
-  RETURN summary_id;
+  RETURN v_summary_id;
 END;
 $$;
 
