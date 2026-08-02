@@ -16,8 +16,10 @@ import {
   getMemberFeeSummaries,
   getMemberPaymentsByMonth,
   getWalkinsByMonth,
+  getWalkinsThroughMonth,
   money,
   todayInputValue,
+  walkinOutstandingAmount,
   walkinSessionDate,
   type WalkinByDay,
   type MonthlyMemberPayment,
@@ -43,6 +45,45 @@ function groupWalkinsByDate(rows: WalkinByDay[]) {
     groups.set(date, [...(groups.get(date) || []), row]);
   }
   return Array.from(groups.entries()).sort(([a], [b]) => b.localeCompare(a));
+}
+
+type UnpaidWalkinGroup = {
+  key: string;
+  name: string;
+  totalOutstanding: number;
+  count: number;
+};
+
+function groupUnpaidWalkins(rows: WalkinByDay[]) {
+  const groups = new Map<string, UnpaidWalkinGroup>();
+  for (const row of rows) {
+    const outstanding = walkinOutstandingAmount(row);
+    if (outstanding <= 0) continue;
+
+    const date = walkinSessionDate(row) || "unknown";
+    const cleanName = row.walkin_name?.trim().replace(/\s+/g, " ") || "";
+    const key = cleanName
+      ? `name:${cleanName.toLocaleLowerCase("vi")}`
+      : `walkin:${date}:${row.walkin_number}`;
+    const current = groups.get(key);
+    if (current) {
+      current.totalOutstanding += outstanding;
+      current.count += 1;
+      continue;
+    }
+
+    groups.set(key, {
+      key,
+      name: cleanName || `VÃ£ng lai #${row.walkin_number}`,
+      totalOutstanding: outstanding,
+      count: 1,
+    });
+  }
+
+  return Array.from(groups.values()).sort(
+    (left, right) =>
+      right.totalOutstanding - left.totalOutstanding || left.name.localeCompare(right.name, "vi")
+  );
 }
 
 function paymentCharge(payment: MonthlyMemberPayment) {
@@ -79,26 +120,62 @@ function savedComponentAmount(
   return savedItems.find((item) => item.name === label)?.amount || 0;
 }
 
+function WalkinCollectionCard({ group }: { group: UnpaidWalkinGroup }) {
+  return (
+    <article className="monthly-collection-member">
+      <div className="monthly-collection-member-head">
+        <div>
+          <strong>{group.name}</strong>
+          <span>Vãng lai</span>
+        </div>
+        <b>{money(group.totalOutstanding)}</b>
+      </div>
+      <div className="monthly-collection-options">
+        <div className="monthly-collection-option">
+          <div className="monthly-collection-static-label">
+            <span className="monthly-collection-option-marker" aria-hidden="true">✓</span>
+            <span>Vãng lai chưa thu ({group.count} khoản)</span>
+          </div>
+          <output className="monthly-collection-static-amount">
+            {group.totalOutstanding.toLocaleString("vi-VN")}
+          </output>
+        </div>
+      </div>
+      <div className="monthly-collection-status">
+        <span>Trạng thái thu</span>
+        <strong className="unpaid">Chưa thu</strong>
+      </div>
+    </article>
+  );
+}
+
 export default async function TongHopPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
   if (!(await isThuRouteAuthenticated())) {
     return <ManagementAuthPanel nextPath="/tong-hop" />;
   }
   const month = params.month || currentMonthValue();
-  const [summary, walkins, memberPayments, monthlyCards, feeSummaries] =
+  const [summary, walkins, allWalkinsThroughMonth, memberPayments, monthlyCards, feeSummaries] =
     await Promise.all([
       getMonthSummary(month),
       getWalkinsByMonth(month),
+      getWalkinsThroughMonth(month),
       getMemberPaymentsByMonth(month),
       getMonthlyMemberCards(month),
       getMemberFeeSummaries(month),
-    ]);
+  ]);
   const walkinGroups = groupWalkinsByDate(walkins);
+  const unpaidWalkinGroups = groupUnpaidWalkins(allWalkinsThroughMonth);
   const memberPaymentGroups = groupMemberPaymentsByDate(memberPayments);
-  const totalDebt = summary.balances.reduce(
+  const memberDebt = summary.balances.reduce(
     (sum, row) => sum + row.outstanding_debt,
     0
   );
+  const unpaidWalkinTotal = unpaidWalkinGroups.reduce(
+    (sum, group) => sum + group.totalOutstanding,
+    0
+  );
+  const totalDebt = memberDebt + unpaidWalkinTotal;
   const feeSummaryByMember = new Map(feeSummaries.map((card) => [card.memberId, card]));
 
   return (
@@ -119,14 +196,14 @@ export default async function TongHopPage({ searchParams }: PageProps) {
       </section>
 
       <section className="summary-grid">
-        <div className="metric">
+        <div className={summary.openingBalance < 0 ? "metric danger" : "metric"}>
           <span>Tồn đầu tháng</span>
           <strong>{money(summary.openingBalance)}</strong>
         </div>
         <details className="metric summary-money-accordion">
           <summary>
             <div>
-              <span>Thu thành viên</span>
+              <span>Đã thu thành viên</span>
               <strong>{money(summary.paymentsTotal)}</strong>
             </div>
           </summary>
@@ -171,7 +248,7 @@ export default async function TongHopPage({ searchParams }: PageProps) {
         <details className="metric summary-money-accordion">
           <summary>
             <div>
-              <span>Thu vãng lai</span>
+              <span>Đã thu vãng lai</span>
               <strong>{money(summary.walkinsTotal)}</strong>
             </div>
           </summary>
@@ -220,11 +297,36 @@ export default async function TongHopPage({ searchParams }: PageProps) {
             })}
           </div>
         </details>
+        <details
+          className="metric summary-money-accordion"
+          open={unpaidWalkinGroups.length > 0}
+        >
+          <summary>
+            <div>
+              <span>Vãng lai chưa thu</span>
+              <strong>{money(unpaidWalkinTotal)}</strong>
+            </div>
+          </summary>
+          <div className="summary-money-details">
+            {unpaidWalkinGroups.length === 0 && (
+              <div className="empty">Không còn khoản vãng lai chưa thu.</div>
+            )}
+            {unpaidWalkinGroups.map((group) => (
+              <div className="walkin-day-item" key={group.key}>
+                <div>
+                  <strong>{group.name}</strong>
+                  <span>{group.count} khoản chưa thu</span>
+                </div>
+                <b>{money(group.totalOutstanding)}</b>
+              </div>
+            ))}
+          </div>
+        </details>
         <div className="metric">
           <span>Tổng chi</span>
           <strong>{money(summary.expensesTotal)}</strong>
         </div>
-        <div className="metric highlight">
+        <div className={summary.closingEstimate < 0 ? "metric danger" : "metric highlight"}>
           <span>Ước tính tồn cuối</span>
           <strong>{money(summary.closingEstimate)}</strong>
         </div>
@@ -253,11 +355,19 @@ export default async function TongHopPage({ searchParams }: PageProps) {
       <section className="card monthly-collection-card">
         <div className="section-title">Chọn khoản thu tháng</div>
         <p className="muted monthly-collection-help">
-          Chọn khoản thực tế cần chốt cho từng thành viên. Tiền độ và phí giao lưu đã gồm
-          phần còn thiếu từ các tháng trước để có thể thu gộp một lần.
+          Chọn khoản thực tế cần chốt cho từng thành viên và xem các khoản vãng lai cần thu.
+          Tiền độ và phí giao lưu đã gồm phần còn thiếu từ các tháng trước để có thể thu gộp một lần.
         </p>
         {monthlyCards.length === 0 ? (
-          <div className="empty">Chưa có thành viên hoặc chưa cấu hình dữ liệu thu.</div>
+          unpaidWalkinGroups.length === 0 ? (
+            <div className="empty">Chưa có thành viên hoặc chưa cấu hình dữ liệu thu.</div>
+          ) : (
+            <div className="monthly-collection-grid">
+              {unpaidWalkinGroups.map((group) => (
+                <WalkinCollectionCard group={group} key={group.key} />
+              ))}
+            </div>
+          )
         ) : (
           <form action={monthlyCollectionAction}>
             <ConfirmCollectionButton />
@@ -299,7 +409,14 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                 };
                 const total = Object.values(values).reduce((sum, amount) => sum + amount, 0);
                 return (
-                  <article className="monthly-collection-member" key={card.memberId}>
+                  <article
+                    className={
+                      card.status === "fixed"
+                        ? "monthly-collection-member is-fixed-member"
+                        : "monthly-collection-member is-former-fixed-member"
+                    }
+                    key={card.memberId}
+                  >
                     <div className="monthly-collection-member-head">
                       <div>
                         <strong>{card.name}</strong>
@@ -367,6 +484,9 @@ export default async function TongHopPage({ searchParams }: PageProps) {
                   </article>
                 );
               })}
+              {unpaidWalkinGroups.map((group) => (
+                <WalkinCollectionCard group={group} key={group.key} />
+              ))}
             </div>
             <button className="btn-primary" type="submit">
               Lưu kế hoạch thu

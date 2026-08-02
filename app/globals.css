@@ -377,6 +377,14 @@ code {
   overflow: hidden;
 }
 
+.monthly-collection-member.is-fixed-member {
+  border-color: #22c55e;
+}
+
+.monthly-collection-member.is-former-fixed-member {
+  border-color: #f97316;
+}
+
 .monthly-collection-member-head {
   display: flex;
   align-items: center;
@@ -440,6 +448,38 @@ code {
   height: 34px;
   padding: 0 7px;
   text-align: right;
+}
+
+.monthly-collection-static-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #cbd5e1;
+}
+
+.monthly-collection-option-marker {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 3px;
+  background: #4ade80;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.monthly-collection-static-amount {
+  display: flex;
+  min-width: 0;
+  height: 34px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 7px;
+  border: 1px solid #4b6284;
+  border-radius: 8px;
+  color: #f8fafc;
+  font-size: 14px;
 }
 
 .member-debt-layout {

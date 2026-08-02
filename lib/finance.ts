@@ -746,6 +746,19 @@ export const getWalkinsByMonth = cache(async function getWalkinsByMonth(month: s
   return (data || []) as WalkinByDay[];
 });
 
+export const getWalkinsThroughMonth = cache(async function getWalkinsThroughMonth(month: string) {
+  if (!hasServerSupabaseConfig) return [] as WalkinByDay[];
+  const { data, error } = await getSupabaseAdmin()
+    .from("session_walkins")
+    .select("*,sessions!inner(session_date)")
+    .lt("sessions.session_date", nextMonth(month))
+    .order("session_date", { referencedTable: "sessions", ascending: false })
+    .order("walkin_number", { ascending: true })
+    .order("fee_type", { ascending: false });
+  if (error) throw error;
+  return (data || []) as WalkinByDay[];
+});
+
 export async function getCharges() {
   if (!hasServerSupabaseConfig) return [];
   const { data, error } = await getSupabaseAdmin()
@@ -827,7 +840,7 @@ export async function getMonthSummary(month: string) {
   const end = nextMonth(month);
   const supabase = getSupabaseAdmin();
 
-  const [snapshot, payments, walkins, expenses, balances] = await Promise.all([
+  const [snapshot, payments, walkins, expenses, balances, priorPayments, priorWalkins, priorExpenses] = await Promise.all([
     supabase
       .from("monthly_fund_snapshot")
       .select("opening_balance")
@@ -853,13 +866,48 @@ export async function getMonthSummary(month: string) {
       .from("member_balance")
       .select("*")
       .order("outstanding_debt", { ascending: false }),
+    supabase
+      .from("payments")
+      .select("amount_paid")
+      .lt("paid_date", start),
+    supabase
+      .from("session_walkins")
+      .select("amount_collected,sessions!inner(session_date)")
+      .eq("is_paid", 1)
+      .lt("sessions.session_date", start),
+    supabase
+      .from("expenses")
+      .select("amount")
+      .lt("expense_date", start),
   ]);
 
-  for (const result of [snapshot, payments, walkins, expenses, balances]) {
+  for (const result of [
+    snapshot,
+    payments,
+    walkins,
+    expenses,
+    balances,
+    priorPayments,
+    priorWalkins,
+    priorExpenses,
+  ]) {
     if (result.error) throw result.error;
   }
 
-  const openingBalance = snapshot.data?.opening_balance || 0;
+  const calculatedOpeningBalance =
+    ((priorPayments.data || []) as AmountPaidRow[]).reduce(
+      (sum, row) => sum + (row.amount_paid || 0),
+      0
+    ) +
+    ((priorWalkins.data || []) as AmountCollectedRow[]).reduce(
+      (sum, row) => sum + (row.amount_collected || 0),
+      0
+    ) -
+    ((priorExpenses.data || []) as AmountRow[]).reduce(
+      (sum, row) => sum + (row.amount || 0),
+      0
+    );
+  const openingBalance = snapshot.data?.opening_balance ?? calculatedOpeningBalance;
   const paymentsTotal = ((payments.data || []) as AmountPaidRow[]).reduce(
     (sum, row) => sum + (row.amount_paid || 0),
     0
