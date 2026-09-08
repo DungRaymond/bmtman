@@ -194,7 +194,9 @@ export default async function TongHopPage({ searchParams }: PageProps) {
           <button className="btn-secondary" type="submit">
             Xem tháng
           </button>
-        </form>
+          <a className="btn-secondary" href={`/tong-hop/export?month=${month}`}>
+            Xuất Excel
+          </a>        </form>
       </section>
 
       <section className="summary-grid">
