@@ -1085,11 +1085,15 @@ export async function deleteChargeAction(formData: FormData) {
   const chargeId = intValue(formData, "charge_id");
   const supabase = getSupabaseAdmin();
 
-  const { error: paymentsError } = await supabase
+  const { data: linkedPayments, error: paymentsError } = await supabase
     .from("payments")
-    .delete()
-    .eq("charge_id", chargeId);
+    .select("payment_id")
+    .eq("charge_id", chargeId)
+    .limit(1);
   if (paymentsError) throw paymentsError;
+  if (linkedPayments && linkedPayments.length > 0) {
+    throw new Error("Khoản thu đã có thanh toán; không thể xoá để bảo toàn lịch sử thu và tồn quỹ.");
+  }
 
   const { error } = await supabase
     .from("charges")

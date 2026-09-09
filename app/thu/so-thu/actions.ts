@@ -191,16 +191,11 @@ export async function deleteLedgerChargeAction(formData: FormData) {
   const chargeId = positiveInt(formData, "charge_id");
   await assertChargeNotLinkedToCollection(chargeId);
   const supabase = getSupabaseAdmin();
-  const { data: payment, error: paymentError } = await supabase
+  const { error: paymentsError } = await supabase
     .from("payments")
-    .select("payment_id")
-    .eq("charge_id", chargeId)
-    .limit(1)
-    .maybeSingle();
-  if (paymentError) throw paymentError;
-  if (payment) {
-    throw new Error("Khoản này đã có thanh toán. Hãy xóa các lần thanh toán trước.");
-  }
+    .delete()
+    .eq("charge_id", chargeId);
+  if (paymentsError) throw paymentsError;
   const { error } = await supabase.from("charges").delete().eq("charge_id", chargeId);
   if (error) throw error;
   revalidateLedger();

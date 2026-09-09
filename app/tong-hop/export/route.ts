@@ -69,6 +69,17 @@ function groupWalkinsByDate(rows: WalkinByDay[]) {
   return Array.from(groups.entries()).sort(([left], [right]) => right.localeCompare(left));
 }
 
+function monthRange(from: string, to: string) {
+  const result: string[] = [];
+  const cursor = new Date(`${from}-01T00:00:00Z`);
+  const end = new Date(`${to}-01T00:00:00Z`);
+  while (cursor <= end) {
+    result.push(cursor.toISOString().slice(0, 7));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return result;
+}
+
 function workbookXml(sheets: Sheet[]) {
   return `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
@@ -87,26 +98,51 @@ export async function GET(request: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const month = new URL(request.url).searchParams.get("month") || "";
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
-    return new Response("Tháng không hợp lệ", { status: 400 });
+  const params = new URL(request.url).searchParams;
+  const from = params.get("from") || params.get("month") || "";
+  const to = params.get("to") || params.get("month") || from;
+  const validMonth = /^\d{4}-(0[1-9]|1[0-2])$/;
+  if (!validMonth.test(from) || !validMonth.test(to) || from > to) {
+    return new Response("Khoảng tháng không hợp lệ", { status: 400 });
   }
 
-  const [summary, payments, walkins, expenses] = await Promise.all([
-    getMonthSummary(month),
-    getMemberPaymentsByMonth(month),
-    getWalkinsByMonth(month),
-    getExpenses(month),
-  ]);
+  const months = monthRange(from, to);
+  if (months.length > 120) {
+    return new Response("Khoảng xuất tối đa là 120 tháng", { status: 400 });
+  }
+
+  const monthly = await Promise.all(
+    months.map(async (month) => {
+      const [summary, payments, walkins, expenses] = await Promise.all([
+        getMonthSummary(month),
+        getMemberPaymentsByMonth(month),
+        getWalkinsByMonth(month),
+        getExpenses(month),
+      ]);
+      return { summary, payments, walkins, expenses };
+    })
+  );
+  const firstSummary = monthly[0].summary;
+  const payments = monthly.flatMap((item) => item.payments);
+  const walkins = monthly.flatMap((item) => item.walkins);
+  const expenses = monthly.flatMap((item) => item.expenses);
+  const summary = {
+    openingBalance: firstSummary.openingBalance,
+    paymentsTotal: monthly.reduce((total, item) => total + item.summary.paymentsTotal, 0),
+    walkinsTotal: monthly.reduce((total, item) => total + item.summary.walkinsTotal, 0),
+    expensesTotal: monthly.reduce((total, item) => total + item.summary.expensesTotal, 0),
+    closingEstimate: firstSummary.openingBalance +
+      monthly.reduce((total, item) => total + item.summary.paymentsTotal + item.summary.walkinsTotal - item.summary.expensesTotal, 0),
+  };
 
   const walkinRows = groupWalkinsByDate(walkins);
   const sheets: Sheet[] = [
     {
       name: "Tổng hợp",
       rows: [
-        ["BÁO CÁO THU CHI THÁNG", month],
+        ["BÁO CÁO THU CHI", `${from} đến ${to}`],
         ["Khoản mục", "Số tiền (VND)"],
-        ["Tồn đầu tháng", summary.openingBalance],
+        ["Tồn đầu kỳ", summary.openingBalance],
         ["Thu thành viên", summary.paymentsTotal],
         ["Thu vãng lai", summary.walkinsTotal],
         ["Tổng chi", summary.expensesTotal],
@@ -123,6 +159,7 @@ export async function GET(request: Request) {
           chargeTypeLabels[paymentChargeType(payment)] || "Khoản thu",
           Number(payment.amount_paid) || 0,
           payment.payment_method || "",
+          payment.excludedFromFund ? "Không" : "Có",
           payment.note || "",
         ]),
       ],
@@ -159,7 +196,7 @@ export async function GET(request: Request) {
   return new Response(workbookXml(sheets), {
     headers: {
       "Content-Type": "application/vnd.ms-excel; charset=utf-8",
-      "Content-Disposition": `attachment; filename="bao-cao-thu-chi-${month}.xls"`,
+      "Content-Disposition": `attachment; filename="bao-cao-thu-chi-${from}-den-${to}.xls"`,
       "Cache-Control": "no-store",
     },
   });

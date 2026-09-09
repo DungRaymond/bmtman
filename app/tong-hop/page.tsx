@@ -194,9 +194,15 @@ export default async function TongHopPage({ searchParams }: PageProps) {
           <button className="btn-secondary" type="submit">
             Xem tháng
           </button>
-          <a className="btn-secondary" href={`/tong-hop/export?month=${month}`}>
+</form>
+        <form className="inline-form" action="/tong-hop/export" method="get">
+          <input type="month" name="from" defaultValue={month} aria-label="Từ tháng" />
+          <span>đến</span>
+          <input type="month" name="to" defaultValue={month} aria-label="Đến tháng" />
+          <button className="btn-secondary" type="submit">
             Xuất Excel
-          </a>        </form>
+          </button>
+        </form>
       </section>
 
       <section className="summary-grid">
