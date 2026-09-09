@@ -352,6 +352,9 @@ export async function deleteScoreSetAction(formData: FormData) {
   revalidatePath("/tong-hop/tien-do");
   redirect(`/?date=${date}`);
 }
+function isMissingSettlementRpc(error: { code?: string } | null | undefined) {
+  return !!error && ["PGRST202", "PGRST205", "42883"].includes(error.code || "");
+}
 export async function settleDailyScorecardAction(formData: FormData) {
   await assertAdmin();
   const date = requiredString(formData, "date");
@@ -414,10 +417,10 @@ export async function settleDailyScorecardAction(formData: FormData) {
     "create_daily_scorecard_settlement_run",
     { p_score_date: date }
   );
-  if (runError || !runId) {
-    throw new Error(runError?.message || "Không tạo được settlement batch cho ngày.");
+  if (runError && !isMissingSettlementRpc(runError)) {
+    throw new Error(runError.message || "Không tạo được settlement batch cho ngày.");
   }
-  const settlementRunId = Number(runId);
+  const settlementRunId = runId ? Number(runId) : undefined;
 
   try {
     const { data: existingWalkins, error: existingWalkinsError } = await supabase
@@ -525,17 +528,29 @@ export async function settleDailyScorecardAction(formData: FormData) {
 
   await Promise.all([...memberUpdates, ...walkinFeeUpdates, ...walkinStakeUpdates]);
 
-    const { error: finalizeError } = await supabase.rpc(
-      "finalize_daily_scorecard_settlement",
-      { p_run_id: settlementRunId, p_score_date: date }
-    );
-    if (finalizeError) throw finalizeError;
+    if (settlementRunId !== undefined) {
+      const { error: finalizeError } = await supabase.rpc(
+        "finalize_daily_scorecard_settlement",
+        { p_run_id: settlementRunId, p_score_date: date }
+      );
+      if (finalizeError) throw finalizeError;
+    } else {
+      const settledAt = new Date().toISOString();
+      const { error: legacyFinalizeError } = await supabase
+        .from("daily_scorecards")
+        .update({ settled_at: settledAt, updated_at: settledAt })
+        .eq("score_date", date)
+        .is("settled_at", null);
+      if (legacyFinalizeError) throw legacyFinalizeError;
+    }
   } catch (error) {
-    const { error: abortError } = await supabase.rpc(
-      "abort_daily_scorecard_settlement",
-      { p_run_id: settlementRunId }
-    );
-    if (abortError) console.error("Không thể dọn settlement batch lỗi", abortError);
+    if (settlementRunId !== undefined) {
+      const { error: abortError } = await supabase.rpc(
+        "abort_daily_scorecard_settlement",
+        { p_run_id: settlementRunId }
+      );
+      if (abortError) console.error("Không thể dọn settlement batch lỗi", abortError);
+    }
     throw error;
   }
 
