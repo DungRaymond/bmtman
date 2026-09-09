@@ -8,14 +8,14 @@ import {
   getFeeAmount,
   getMemberStatus,
   getMonthlyMemberCards,
-  getMonthlyWalkinCollectionCards,
   normalizeScorecardPayload,
   parseScorePlayerKey,
-  todayInputValue,
-  walkinPlanFieldPrefix,
+  scorePlayerKey,
+  emptyScorePlayer,
   type DailyScorecardPayload,
   type MemberFeeItem,
   type ScoreSet,
+  type ScorePlayer,
 } from "@/lib/finance";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 import { assertAdmin } from "@/lib/security";
@@ -33,20 +33,6 @@ function intValue(formData: FormData, key: string, fallback = 0) {
   const value = Number(raw);
   if (!Number.isFinite(value)) throw new Error(`Giá trị số không hợp lệ cho ${key}`);
   return Math.max(0, Math.round(value));
-}
-
-async function assertWalkinNotPlannedForCollection(id: number) {
-  const { data, error } = await getSupabaseAdmin()
-    .from("walkin_fee_summary_items")
-    .select("id,walkin_fee_summaries!inner(status)")
-    .eq("session_walkin_id", id)
-    .eq("walkin_fee_summaries.status", "planned")
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  if (data) {
-    throw new Error("Khoản vãng lai đã nằm trong kế hoạch thu, hãy sửa kế hoạch tại Tổng hợp.");
-  }
 }
 
 type FeePlanRow = {
@@ -128,73 +114,6 @@ async function saveFeeSummaryPlanRows(rows: FeePlanRow[]) {
     .from("member_fee_summaries")
     .upsert(writableRows, { onConflict: "member_id,period_month" });
   if (error) throw error;
-}
-
-type SummaryAllocation = {
-  charge_id: number;
-  component: "fixed" | "stake" | "giao_luu" | "other";
-  amount: number;
-};
-
-const componentChargeTypes: Record<SummaryAllocation["component"], string[]> = {
-  fixed: ["monthly_fixed_fee"],
-  stake: ["monthly_stake_fee", "session_stake_fee"],
-  giao_luu: ["session_giaoluu_fee"],
-  other: ["tournament_fee", "other"],
-};
-
-function summaryItemComponent(item: MemberFeeItem): SummaryAllocation["component"] | null {
-  if (item.component) return item.component;
-  const normalized = item.name.toLocaleLowerCase("vi");
-  if (normalized.includes("quỹ")) return "fixed";
-  if (normalized.includes("độ")) return "stake";
-  if (normalized.includes("giao lưu")) return "giao_luu";
-  if (normalized.includes("khác")) return "other";
-  return null;
-}
-
-function buildSummaryAllocations(
-  card: Awaited<ReturnType<typeof getMonthlyMemberCards>>[number],
-  items: MemberFeeItem[]
-): SummaryAllocation[] {
-  const allocations: SummaryAllocation[] = [];
-  const usedCharges = new Set<number>();
-
-  for (const item of items) {
-    const component = summaryItemComponent(item);
-    if (!component || item.amount <= 0) {
-      throw new Error("Khoản thu chưa có loại phân bổ hợp lệ.");
-    }
-
-    let remaining = item.amount;
-    const candidates = card.unpaidItems.filter(
-      (charge) =>
-        !usedCharges.has(charge.chargeId) &&
-        componentChargeTypes[component].includes(charge.chargeType)
-    );
-
-    for (const charge of candidates) {
-      if (remaining <= 0) break;
-      if (remaining < charge.outstanding) {
-        throw new Error(
-          `Khoản ${item.name} phải thu đủ từng khoản phải thu; hãy điều chỉnh kế hoạch hoặc ghi nhận qua sổ thu.`
-        );
-      }
-      const amount = Math.min(remaining, charge.outstanding);
-      if (amount <= 0) continue;
-      allocations.push({ charge_id: charge.chargeId, component, amount });
-      usedCharges.add(charge.chargeId);
-      remaining -= amount;
-    }
-
-    if (remaining > 0) {
-      throw new Error(
-        `Chưa có charge hợp lệ để ghi nhận ${item.name}; hãy tạo khoản phải thu trước.`
-      );
-    }
-  }
-
-  return allocations;
 }
 
 async function ensureSession(date: string) {
@@ -289,45 +208,6 @@ async function saveDailyScorecard(date: string, payload: DailyScorecardPayload) 
   if (error) throw error;
 }
 
-function scoreSetFromForm(formData: FormData, fallback: ScoreSet) {
-  const amount = intValue(formData, "amount");
-  const winnerRaw = String(formData.get("winner") || "").trim();
-  return {
-    ...fallback,
-    amount,
-    winner: winnerRaw === "A" || winnerRaw === "B" ? winnerRaw : fallback.winner,
-    players: [
-      parseScorePlayerKey(String(formData.get("player_0") || "")),
-      parseScorePlayerKey(String(formData.get("player_1") || "")),
-      parseScorePlayerKey(String(formData.get("player_2") || "")),
-      parseScorePlayerKey(String(formData.get("player_3") || "")),
-    ],
-  } satisfies ScoreSet;
-}
-
-function scoreSetIsReady(set: ScoreSet) {
-  const sideA = set.players.slice(0, 2).filter((player) => player.type !== "empty");
-  const sideB = set.players.slice(2, 4).filter((player) => player.type !== "empty");
-  return (
-    set.amount > 0 &&
-    !!set.winner &&
-    sideA.length > 0 &&
-    sideB.length > 0
-  );
-}
-
-function scoreSetHasDuplicatePlayers(set: ScoreSet) {
-  const keys = set.players
-    .map((player) => {
-      if (player.type === "member") return `m:${player.memberId}`;
-      if (player.type === "walkin") return `w:${player.walkinNumber}`;
-      if (player.type === "guest") return `g:${player.name?.trim().toLocaleLowerCase("vi")}`;
-      return "";
-    })
-    .filter(Boolean);
-  return new Set(keys).size !== keys.length;
-}
-
 function scoreEntryPlayer(formData: FormData, key: string) {
   const value = String(formData.get(key) || "").trim();
   if (value === "custom") {
@@ -342,11 +222,30 @@ export type ConfirmScoreEntryState = {
   error: string;
 };
 
+function playerIdentity(player: ScorePlayer) {
+  return scorePlayerKey(player).trim().toLocaleLowerCase("vi");
+}
+
+function scoreSetIsReady(set: ScoreSet) {
+  return set.amount > 0 && !!set.loser && set.loser.type !== "empty";
+}
+
+function scoreSetHasDuplicatePlayers(set: ScoreSet) {
+  const loser = set.loser && playerIdentity(set.loser);
+  const recipient = set.recipient && playerIdentity(set.recipient);
+  return !!loser && !!recipient && loser === recipient;
+}
+
 function losingPlayers(set: ScoreSet) {
+  if (set.loser && set.loser.type !== "empty") return [set.loser];
   return set.winner === "A" ? set.players.slice(2, 4) : set.players.slice(0, 2);
 }
 
 function presentPlayers(set: ScoreSet) {
+  const directPlayers = [set.loser, set.recipient].filter(
+    (player): player is ScorePlayer => !!player && player.type !== "empty"
+  );
+  if (directPlayers.length > 0) return directPlayers;
   return set.players.filter((player) => player.type !== "empty");
 }
 
@@ -360,44 +259,9 @@ function guestKey(name: string) {
 
 function assertScorecardIsOpen(settledAt: string | null) {
   if (settledAt) {
-    throw new Error("Ngày này đã chốt sổ độ, không thể sửa thêm.");
+    throw new Error("NgÃ y nÃ y Ä‘Ã£ chá»‘t sá»• Ä‘á»™, khÃ´ng thá»ƒ sá»­a thÃªm.");
   }
 }
-
-export async function createSessionAction(formData: FormData) {
-  const date = requiredString(formData, "date");
-  await ensureSession(date);
-  revalidatePath("/");
-  redirect(`/?date=${date}`);
-}
-
-export async function addScoreSetAction(formData: FormData) {
-  const date = requiredString(formData, "date");
-  const card = await getDailyScorecard(date);
-  assertScorecardIsOpen(card.settled_at);
-  const payload = normalizeScorecardPayload(card.payload);
-  if (payload.sets.length >= 12) {
-    throw new Error("Một ngày tối đa 12 thẻ ghi độ.");
-  }
-
-  payload.sets.push({
-    id: globalThis.crypto.randomUUID(),
-    amount: 0,
-    winner: null,
-    locked: false,
-    players: [
-      { type: "empty" },
-      { type: "empty" },
-      { type: "empty" },
-      { type: "empty" },
-    ],
-  });
-
-  await saveDailyScorecard(date, payload);
-  revalidatePath("/");
-  redirect(`/?date=${date}`);
-}
-
 export async function confirmScoreEntryAction(
   previousState: ConfirmScoreEntryState,
   formData: FormData
@@ -407,31 +271,21 @@ export async function confirmScoreEntryAction(
     const card = await getDailyScorecard(date);
     assertScorecardIsOpen(card.settled_at);
     const payload = normalizeScorecardPayload(card.payload);
-    if (payload.sets.length >= 12) throw new Error("Một ngày tối đa 12 thẻ ghi độ.");
+    if (payload.sets.length >= 12) throw new Error("Má»™t ngÃ y tá»‘i Ä‘a 12 tháº» ghi Ä‘á»™.");
 
-    const winnerValue = String(formData.get("winner") || "");
     const set: ScoreSet = {
       id: globalThis.crypto.randomUUID(),
       amount: intValue(formData, "amount"),
-      winner: winnerValue === "A" || winnerValue === "B" ? winnerValue : null,
+      winner: null,
       locked: true,
-      players: [
-        scoreEntryPlayer(formData, "player_0"),
-        scoreEntryPlayer(formData, "player_1"),
-        scoreEntryPlayer(formData, "player_2"),
-        scoreEntryPlayer(formData, "player_3"),
-      ],
+      loser: scoreEntryPlayer(formData, "loser"),
+      recipient: scoreEntryPlayer(formData, "recipient"),
+      players: [emptyScorePlayer(), emptyScorePlayer(), emptyScorePlayer(), emptyScorePlayer()],
     };
 
-    if (set.amount < 5000) {
-      throw new Error("Mức độ phải từ 5.000đ.");
-    }
-    if (!scoreSetIsReady(set)) {
-      throw new Error("Cần chọn người đầu tiên của mỗi bên và bên thắng.");
-    }
-    if (scoreSetHasDuplicatePlayers(set)) {
-      throw new Error("Một thẻ không được chọn trùng người.");
-    }
+    if (set.amount < 5000) throw new Error("Má»©c Ä‘á»™ pháº£i tá»« 5.000Ä‘.");
+    if (!scoreSetIsReady(set)) throw new Error("Cáº§n chá»n ngÆ°á»i thua Ä‘á»™.");
+    if (scoreSetHasDuplicatePlayers(set)) throw new Error("NgÆ°á»i thua vÃ  ngÆ°á»i nháº­n khÃ´ng Ä‘Æ°á»£c trÃ¹ng nhau.");
 
     payload.sets.push(set);
     await saveDailyScorecard(date, payload);
@@ -440,11 +294,10 @@ export async function confirmScoreEntryAction(
   } catch (error) {
     return {
       successKey: previousState.successKey,
-      error: error instanceof Error ? error.message : "Không ghi được thẻ độ.",
+      error: error instanceof Error ? error.message : "KhÃ´ng ghi Ä‘Æ°á»£c tháº» Ä‘á»™.",
     };
   }
 }
-
 export async function updateScoreEntryAction(
   previousState: ConfirmScoreEntryState,
   formData: FormData
@@ -456,31 +309,21 @@ export async function updateScoreEntryAction(
     assertScorecardIsOpen(card.settled_at);
     const payload = normalizeScorecardPayload(card.payload);
     const index = payload.sets.findIndex((set) => set.id === setId);
-    if (index < 0) throw new Error("Không tìm thấy lượt độ.");
+    if (index < 0) throw new Error("KhÃ´ng tÃ¬m tháº¥y lÆ°á»£t Ä‘á»™.");
 
-    const winnerValue = String(formData.get("winner") || "");
     const updated: ScoreSet = {
       ...payload.sets[index],
       amount: intValue(formData, "amount"),
-      winner: winnerValue === "A" || winnerValue === "B" ? winnerValue : null,
+      winner: null,
       locked: true,
-      players: [
-        scoreEntryPlayer(formData, "player_0"),
-        scoreEntryPlayer(formData, "player_1"),
-        scoreEntryPlayer(formData, "player_2"),
-        scoreEntryPlayer(formData, "player_3"),
-      ],
+      loser: scoreEntryPlayer(formData, "loser"),
+      recipient: scoreEntryPlayer(formData, "recipient"),
+      players: [emptyScorePlayer(), emptyScorePlayer(), emptyScorePlayer(), emptyScorePlayer()],
     };
 
-    if (updated.amount < 5000) {
-      throw new Error("Mức độ phải từ 5.000đ.");
-    }
-    if (!scoreSetIsReady(updated)) {
-      throw new Error("Cần chọn người đầu tiên của mỗi bên và bên thắng.");
-    }
-    if (scoreSetHasDuplicatePlayers(updated)) {
-      throw new Error("Một thẻ không được chọn trùng người.");
-    }
+    if (updated.amount < 5000) throw new Error("Má»©c Ä‘á»™ pháº£i tá»« 5.000Ä‘.");
+    if (!scoreSetIsReady(updated)) throw new Error("Cáº§n chá»n ngÆ°á»i thua Ä‘á»™.");
+    if (scoreSetHasDuplicatePlayers(updated)) throw new Error("NgÆ°á»i thua vÃ  ngÆ°á»i nháº­n khÃ´ng Ä‘Æ°á»£c trÃ¹ng nhau.");
 
     payload.sets[index] = updated;
     await saveDailyScorecard(date, payload);
@@ -490,80 +333,25 @@ export async function updateScoreEntryAction(
   } catch (error) {
     return {
       successKey: previousState.successKey,
-      error: error instanceof Error ? error.message : "Không sửa được lượt độ.",
+      error: error instanceof Error ? error.message : "KhÃ´ng sá»­a Ä‘Æ°á»£c lÆ°á»£t Ä‘á»™.",
     };
   }
 }
-
-export async function saveScoreSetAction(formData: FormData) {
-  const date = requiredString(formData, "date");
-  const setId = requiredString(formData, "set_id");
-  const intent = String(formData.get("intent") || "save");
-  const card = await getDailyScorecard(date);
-  assertScorecardIsOpen(card.settled_at);
-  const payload = normalizeScorecardPayload(card.payload);
-  const index = payload.sets.findIndex((set) => set.id === setId);
-  if (index < 0) throw new Error("Không tìm thấy thẻ ghi độ.");
-
-  const existing = payload.sets[index];
-  if (existing.locked) {
-    redirect(`/?date=${date}`);
-  }
-
-  const updated = scoreSetFromForm(formData, existing);
-  if (intent === "winner_a") updated.winner = "A";
-  if (intent === "winner_b") updated.winner = "B";
-  if (intent === "lock") {
-    if (!scoreSetIsReady(updated)) {
-      throw new Error("Cần có ít nhất 1 người mỗi bên, nhập tiền độ và chọn bên thắng trước khi khóa.");
-    }
-    if (scoreSetHasDuplicatePlayers(updated)) {
-      throw new Error("Một thẻ không được chọn trùng người cho nhiều vị trí.");
-    }
-    updated.locked = true;
-  }
-
-  payload.sets[index] = updated;
-  await saveDailyScorecard(date, payload);
-  revalidatePath("/");
-  redirect(`/?date=${date}`);
-}
-
-export async function unlockScoreSetAction(formData: FormData) {
-  await assertAdmin();
-  const date = requiredString(formData, "date");
-  const setId = requiredString(formData, "set_id");
-  const card = await getDailyScorecard(date);
-  assertScorecardIsOpen(card.settled_at);
-  const payload = normalizeScorecardPayload(card.payload);
-  const index = payload.sets.findIndex((set) => set.id === setId);
-  if (index < 0) throw new Error("Không tìm thấy thẻ ghi độ.");
-
-  payload.sets[index] = {
-    ...payload.sets[index],
-    locked: false,
-  };
-  await saveDailyScorecard(date, payload);
-  revalidatePath("/");
-  redirect(`/?date=${date}`);
-}
-
 export async function deleteScoreSetAction(formData: FormData) {
   const date = requiredString(formData, "date");
   const setId = requiredString(formData, "set_id");
   const card = await getDailyScorecard(date);
   assertScorecardIsOpen(card.settled_at);
   const payload = normalizeScorecardPayload(card.payload);
-  const target = payload.sets.find((set) => set.id === setId);
-  if (!target) throw new Error("Không tìm thấy thẻ ghi độ.");
-
+  if (!payload.sets.some((set) => set.id === setId)) {
+    throw new Error("Không tìm thấy lượt độ.");
+  }
   payload.sets = payload.sets.filter((set) => set.id !== setId);
   await saveDailyScorecard(date, payload);
   revalidatePath("/");
   revalidatePath("/tong-hop/tien-do");
   redirect(`/?date=${date}`);
 }
-
 export async function settleDailyScorecardAction(formData: FormData) {
   await assertAdmin();
   const date = requiredString(formData, "date");
@@ -952,7 +740,6 @@ export async function toggleWalkinPaidAction(formData: FormData) {
   await assertAdmin();
   const date = requiredString(formData, "date");
   const id = intValue(formData, "id");
-  await assertWalkinNotPlannedForCollection(id);
   const { data, error: findError } = await getSupabaseAdmin()
     .from("session_walkins")
     .select("*")
@@ -977,7 +764,6 @@ export async function toggleWalkinPaidAction(formData: FormData) {
 export async function recordWalkinPaymentAction(formData: FormData) {
   await assertAdmin();
   const id = intValue(formData, "id");
-  await assertWalkinNotPlannedForCollection(id);
   const amountCollected = intValue(formData, "amount_collected");
   if (amountCollected <= 0) throw new Error("Số tiền thu phải lớn hơn 0.");
   const note = String(formData.get("note") || "").trim() || null;
@@ -1109,7 +895,6 @@ export async function deleteChargeAction(formData: FormData) {
 export async function deleteWalkinReceivableAction(formData: FormData) {
   await assertAdmin();
   const id = intValue(formData, "id");
-  await assertWalkinNotPlannedForCollection(id);
   const { error } = await getSupabaseAdmin()
     .from("session_walkins")
     .delete()
@@ -1161,285 +946,6 @@ export async function createMonthlySnapshotAction(formData: FormData) {
 
   revalidatePath("/tong-hop");
   redirect(`/tong-hop?month=${periodMonth}`);
-}
-
-export async function generateMonthlyFixedFeesAction(formData: FormData) {
-  await assertAdmin();
-  const periodMonth = requiredString(formData, "period_month");
-  const applyDate = `${periodMonth}-01`;
-  const fixedFee = await getFeeAmount("fixed", "base_fee", applyDate);
-  if (fixedFee <= 0) throw new Error("Chưa cấu hình phí cố định trong fee_rules.");
-
-  const fixedMembers = (await getActiveMembers(applyDate)).filter(
-    (row) => row.status === "fixed"
-  );
-  const supabase = getSupabaseAdmin();
-
-  for (const row of fixedMembers) {
-    const { data: existing, error: findError } = await supabase
-      .from("charges")
-      .select("charge_id")
-      .eq("member_id", row.member_id)
-      .eq("charge_type", "monthly_fixed_fee")
-      .eq("period_month", periodMonth)
-      .maybeSingle();
-    if (findError) throw findError;
-    if (existing) continue;
-
-    const { error } = await supabase.from("charges").insert({
-      member_id: row.member_id,
-      charge_type: "monthly_fixed_fee",
-      amount: fixedFee,
-      period_month: periodMonth,
-      note: `Tự tạo tiền quỹ cố định tháng ${periodMonth}`,
-    });
-    if (error) throw error;
-  }
-
-  if (fixedMembers.length > 0) {
-    const [periodYear, periodNumber] = periodMonth.split("-").map(Number);
-    const nextMonthDate = new Date(Date.UTC(periodYear, periodNumber, 1))
-      .toISOString()
-      .slice(0, 10);
-    const { data: stakeRows, error: stakeError } = await supabase
-      .from("session_stake_points")
-      .select("member_id,stake_points,sessions!inner(session_date)")
-      .in("member_id", fixedMembers.map((row) => row.member_id))
-      .gte("sessions.session_date", `${periodMonth}-01`)
-      .lt("sessions.session_date", nextMonthDate);
-    if (stakeError) throw stakeError;
-
-    const stakeByMember = new Map<number, number>();
-    for (const row of stakeRows || []) {
-      const session = Array.isArray(row.sessions) ? row.sessions[0] : row.sessions;
-      if (!session?.session_date?.startsWith(periodMonth)) continue;
-      stakeByMember.set(
-        row.member_id,
-        (stakeByMember.get(row.member_id) || 0) + Math.max(Number(row.stake_points) || 0, 0)
-      );
-    }
-
-    for (const row of fixedMembers) {
-      const stakeAmount = stakeByMember.get(row.member_id) || 0;
-      if (stakeAmount <= 0) continue;
-      const { data: existing, error: findError } = await supabase
-        .from("charges")
-        .select("charge_id")
-        .eq("member_id", row.member_id)
-        .eq("charge_type", "monthly_stake_fee")
-        .eq("period_month", periodMonth)
-        .maybeSingle();
-      if (findError) throw findError;
-      if (existing) continue;
-
-      const { error } = await supabase.from("charges").insert({
-        member_id: row.member_id,
-        charge_type: "monthly_stake_fee",
-        amount: stakeAmount,
-        period_month: periodMonth,
-        note: `Tự gom tiền độ tháng ${periodMonth}`,
-      });
-      if (error) throw error;
-    }
-  }
-
-  revalidatePath("/thu");
-  revalidatePath("/tong-hop");
-  redirect(`/tong-hop?month=${periodMonth}`);
-}
-
-function walkinPlanAllocations(
-  card: Awaited<ReturnType<typeof getMonthlyWalkinCollectionCards>>[number],
-  plannedAmount: number
-) {
-  if (plannedAmount <= 0) return [];
-  if (plannedAmount > card.totalOutstanding) {
-    throw new Error("Kế hoạch vãng lai không được vượt quá số tiền còn phải thu.");
-  }
-
-  let remaining = plannedAmount;
-  const allocations: { walkin_id: number; amount: number }[] = [];
-  for (const item of card.unpaidItems) {
-    if (remaining <= 0) break;
-    const amount = Math.min(item.outstanding, remaining);
-    if (amount <= 0) continue;
-    allocations.push({ walkin_id: item.walkinId, amount });
-    remaining -= amount;
-  }
-
-  if (remaining > 0) {
-    throw new Error("Không thể phân bổ đủ số tiền vãng lai đã chọn.");
-  }
-  return allocations;
-}
-
-async function savePlannedWalkinSelections(formData: FormData, periodMonth: string) {
-  const cards = await getMonthlyWalkinCollectionCards(periodMonth);
-  const supabase = getSupabaseAdmin();
-
-  for (const card of cards) {
-    const prefix = walkinPlanFieldPrefix(card.groupKey);
-    const selected = formData.get(`${prefix}_selected`) === "on";
-    const plannedAmount = selected ? intValue(formData, `${prefix}_amount`) : 0;
-    const allocations = walkinPlanAllocations(card, plannedAmount);
-    const { error } = await supabase.rpc("save_walkin_fee_summary_plan", {
-      p_period_month: periodMonth,
-      p_group_key: card.groupKey,
-      p_walkin_person_id: card.walkinPersonId,
-      p_display_name: card.name,
-      p_allocations: allocations,
-    });
-    if (error) {
-      throw new Error(`Không thể lưu kế hoạch vãng lai: ${error.message}`);
-    }
-  }
-}
-
-async function savePlannedFeeSelection(formData: FormData) {
-  await assertAdmin();
-  const periodMonth = requiredString(formData, "period_month");
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(periodMonth)) {
-    throw new Error("Tháng áp dụng không hợp lệ.");
-  }
-
-  const cards = await getMonthlyMemberCards(periodMonth);
-  const components = [
-    { key: "fixed", label: "Tiền quỹ" },
-    { key: "stake", label: "Tiền độ" },
-    { key: "giao_luu", label: "Phí giao lưu" },
-    { key: "other", label: "Khoản khác" },
-  ] as const;
-  const rows = cards.map((card) => {
-    const items = components.flatMap((component) => {
-      const prefix = `member_${card.memberId}_${component.key}`;
-      if (formData.get(`${prefix}_selected`) !== "on") return [];
-      const amount = intValue(formData, `${prefix}_amount`);
-      return amount > 0
-        ? [{ name: component.label, amount, component: component.key }]
-        : [];
-    });
-    const totalDue = items.reduce((sum, item) => sum + item.amount, 0);
-    const totalPaid = Math.min(card.totalPaid, totalDue);
-    return {
-      member_id: card.memberId,
-      period_month: periodMonth,
-      member_status: card.status,
-      items,
-      total_due: totalDue,
-      total_paid: totalPaid,
-      outstanding: Math.max(totalDue - totalPaid, 0),
-      updated_at: new Date().toISOString(),
-    };
-  });
-
-  await saveFeeSummaryPlanRows(rows);
-  await savePlannedWalkinSelections(formData, periodMonth);
-
-  revalidatePath("/tong-hop");
-  revalidatePath("/tong-hop/memfee-cards");
-  redirect(`/tong-hop?month=${periodMonth}`);
-}
-
-export async function saveMonthlyCollectionSelectionAction(formData: FormData) {
-  return savePlannedFeeSelection(formData);
-}
-
-export async function markFeeSummaryCollectedAction(formData: FormData) {
-  await assertAdmin();
-  const summaryId = intValue(formData, "collect_summary_id");
-  if (summaryId <= 0) throw new Error("Kế hoạch thu không hợp lệ.");
-
-  const supabase = getSupabaseAdmin();
-  const { data: summary, error: summaryError } = await supabase
-    .from("member_fee_summaries")
-    .select("id,member_id,period_month,status,items,total_due,total_paid,outstanding")
-    .eq("id", summaryId)
-    .single();
-  if (summaryError) throw summaryError;
-  const totalDue = Math.max(Number(summary.total_due) || 0, 0);
-  const totalPaid = Math.max(Number(summary.total_paid) || 0, 0);
-  const outstanding = Math.max(totalDue - totalPaid, 0);
-  if (summary.status === "collected" || totalDue <= 0 || outstanding <= 0) {
-    revalidatePath("/tong-hop");
-    revalidatePath("/tong-hop/memfee-cards");
-    redirect(`/tong-hop?month=${summary.period_month}`);
-  }
-
-  const cards = await getMonthlyMemberCards(summary.period_month);
-  const card = cards.find((row) => row.memberId === summary.member_id);
-  if (!card) throw new Error("Không tìm thấy dữ liệu thành viên của kế hoạch thu.");
-
-  const items = normalizedFeeItems(summary.items);
-  const allocations = buildSummaryAllocations(card, items);
-  if (allocations.length === 0) throw new Error("Kế hoạch thu chưa có khoản cần ghi nhận.");
-
-  const paidDate = String(formData.get("paid_date") || todayInputValue()).trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(paidDate)) {
-    throw new Error("Ngày thu không hợp lệ.");
-  }
-  const paymentMethod = String(formData.get("payment_method") || "cash").trim();
-  const note = String(formData.get("payment_note") || "").trim() || "Thu từ kế hoạch tháng";
-
-  const { error: rpcError } = await supabase.rpc("mark_fee_summary_collected", {
-    p_summary_id: summaryId,
-    p_allocations: allocations,
-    p_paid_date: paidDate,
-    p_payment_method: paymentMethod,
-    p_recorded_by: null,
-    p_note: note,
-  });
-  if (rpcError) throw new Error(`Không thể xác nhận đã thu: ${rpcError.message}`);
-
-  revalidatePath("/tong-hop");
-  revalidatePath("/tong-hop/memfee-cards");
-  revalidatePath("/thu");
-  redirect(`/tong-hop?month=${summary.period_month}`);
-}
-
-export async function markWalkinFeeSummaryCollectedAction(formData: FormData) {
-  await assertAdmin();
-  const summaryId = intValue(formData, "collect_walkin_summary_id");
-  if (summaryId <= 0) throw new Error("Kế hoạch thu vãng lai không hợp lệ.");
-
-  const supabase = getSupabaseAdmin();
-  const { data: summary, error: summaryError } = await supabase
-    .from("walkin_fee_summaries")
-    .select("id,period_month")
-    .eq("id", summaryId)
-    .single();
-  if (summaryError) throw summaryError;
-
-  const paidDate = String(formData.get("paid_date") || todayInputValue()).trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(paidDate)) {
-    throw new Error("Ngày thu không hợp lệ.");
-  }
-  const paymentMethod = String(formData.get("payment_method") || "cash").trim();
-  const note = String(formData.get("payment_note") || "").trim() || null;
-
-  const { error: rpcError } = await supabase.rpc("mark_walkin_fee_summary_collected", {
-    p_summary_id: summaryId,
-    p_paid_date: paidDate,
-    p_payment_method: paymentMethod,
-    p_note: note,
-  });
-  if (rpcError) {
-    throw new Error(`Không thể xác nhận đã thu vãng lai: ${rpcError.message}`);
-  }
-
-  revalidatePath("/tong-hop");
-  revalidatePath("/thu");
-  revalidatePath("/thu/so-thu");
-  redirect(`/tong-hop?month=${summary.period_month}`);
-}
-
-export async function monthlyCollectionAction(formData: FormData) {
-  if (String(formData.get("collect_summary_id") || "").trim()) {
-    return markFeeSummaryCollectedAction(formData);
-  }
-  if (String(formData.get("collect_walkin_summary_id") || "").trim()) {
-    return markWalkinFeeSummaryCollectedAction(formData);
-  }
-  return saveMonthlyCollectionSelectionAction(formData);
 }
 
 export async function saveMemberFeeSummariesAction(formData: FormData) {

@@ -61,11 +61,21 @@ function playerLabel(player: ScorePlayer, members: Member[]) {
   return "—";
 }
 
-function sideLabel(players: ScorePlayer[], members: Member[]) {
+function personListLabel(players: ScorePlayer[], members: Member[]) {
   return players
     .filter((player) => player.type !== "empty")
     .map((player) => playerLabel(player, members))
     .join(" & ");
+}
+
+function loserPlayersForDisplay(set: { loser?: ScorePlayer; winner: "A" | "B" | null; players: ScorePlayer[] }) {
+  if (set.loser && set.loser.type !== "empty") return [set.loser];
+  return set.winner === "A" ? set.players.slice(2, 4) : set.players.slice(0, 2);
+}
+
+function recipientPlayersForDisplay(set: { recipient?: ScorePlayer; winner: "A" | "B" | null; players: ScorePlayer[] }) {
+  if (set.recipient && set.recipient.type !== "empty") return [set.recipient];
+  return set.winner === "A" ? set.players.slice(0, 2) : set.players.slice(2, 4);
 }
 
 function editablePlayer(player: ScorePlayer, members: Member[]) {
@@ -142,10 +152,10 @@ export default async function Home({ searchParams }: PageProps) {
             entry={{
               id: set.id,
               amount: set.amount,
-              winner: set.winner,
-              players: set.players.map((player) => editablePlayer(player, members)),
-              sideALabel: sideLabel(set.players.slice(0, 2), members),
-              sideBLabel: sideLabel(set.players.slice(2, 4), members),
+              loser: editablePlayer(loserPlayersForDisplay(set)[0] || { type: "empty" }, members),
+              recipient: editablePlayer(recipientPlayersForDisplay(set)[0] || { type: "empty" }, members),
+              loserLabel: personListLabel(loserPlayersForDisplay(set), members),
+              recipientLabel: personListLabel(recipientPlayersForDisplay(set), members),
             }}
             key={set.id}
           />
@@ -191,8 +201,8 @@ export default async function Home({ searchParams }: PageProps) {
                           {day.turns.map((turn) => (
                             <div className="stake-turn-row" key={`${day.date}:${turn.setId}`}>
                               <div>
-                                <strong>Lượt {turn.setNumber} · Bên {turn.losingSide} thua</strong>
-                                {turn.winnerNames && <span>Thắng: {turn.winnerNames}</span>}
+                                <strong>Lượt {turn.setNumber} · {turn.loserNames} thua</strong>
+                                {turn.recipientNames && <span>Nhận tiền: {turn.recipientNames}</span>}
                               </div>
                               <b>{money(turn.amount)}</b>
                             </div>

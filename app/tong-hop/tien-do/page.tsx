@@ -96,8 +96,8 @@ export default async function StakeSummaryPage({ searchParams }: PageProps) {
                         {day.turns.map((turn) => (
                           <div className="stake-turn-row" key={`${day.date}:${turn.setId}`}>
                             <div>
-                              <strong>Lượt {turn.setNumber} · Bên {turn.losingSide} thua</strong>
-                              {turn.winnerNames && <span>Thắng: {turn.winnerNames}</span>}
+                              <strong>Lượt {turn.setNumber} · {turn.loserNames} thua</strong>
+                              {turn.recipientNames && <span>Nhận tiền: {turn.recipientNames}</span>}
                             </div>
                             <b>{money(turn.amount)}</b>
                           </div>

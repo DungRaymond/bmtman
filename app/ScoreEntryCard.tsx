@@ -20,19 +20,18 @@ type Props = {
   disabled: boolean;
 };
 
-type Side = "A" | "B";
 type PlayerState = { value: string; text: string };
 
 export type EditableScoreEntry = {
   id: string;
   amount: number;
-  winner: Side | null;
-  players: PlayerState[];
+  loser: PlayerState;
+  recipient: PlayerState;
 };
 
 export type ScoreHistoryEntry = EditableScoreEntry & {
-  sideALabel: string;
-  sideBLabel: string;
+  loserLabel: string;
+  recipientLabel: string;
 };
 
 const INITIAL_STATE: ConfirmScoreEntryState = { successKey: 0, error: "" };
@@ -41,9 +40,9 @@ const MIN_AMOUNT = 5000;
 const AMOUNT_STEP = 5000;
 const GROUP_PRIORITY = { fixed: 0, former_fixed: 1, walkin: 2 };
 const GROUP_LABEL = {
-  fixed: "Cố định",
-  former_fixed: "Cố định cũ",
-  walkin: "Vãng lai",
+  fixed: "Cá»‘ Ä‘á»‹nh",
+  former_fixed: "Cá»‘ Ä‘á»‹nh cÅ©",
+  walkin: "VÃ£ng lai",
 };
 
 function normalizeVietnamese(value: string) {
@@ -52,7 +51,7 @@ function normalizeVietnamese(value: string) {
     .toLocaleLowerCase("vi")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d")
+    .replace(/Ä‘/g, "d")
     .replace(/\s+/g, " ");
 }
 
@@ -101,9 +100,7 @@ function PlayerInput({
   const listId = useId();
   const normalizedQuery = normalizeVietnamese(player.text);
   const canShowSuggestions = normalizedQuery.length >= 2;
-  const matches = canShowSuggestions
-    ? matchingSuggestions(player.text, suggestions)
-    : [];
+  const matches = canShowSuggestions ? matchingSuggestions(player.text, suggestions) : [];
 
   function selectSuggestion(suggestion: ScorePlayerSuggestion) {
     onChange({ value: suggestion.value, text: suggestion.label });
@@ -127,7 +124,7 @@ function PlayerInput({
       <input
         className="score-player-input"
         value={player.text}
-        placeholder={optional ? "— 1v1 —" : "Chọn người..."}
+        placeholder={optional ? "Không bắt buộc" : "Chọn người..."}
         autoComplete="off"
         role="combobox"
         aria-expanded={open}
@@ -187,43 +184,20 @@ function ScoreEntryForm({
   onCancel?: () => void;
   deleteAction?: (formData: FormData) => void;
 }) {
-  const [players, setPlayers] = useState<PlayerState[]>(() =>
-    initialEntry
-      ? initialEntry.players.map((player) => ({ ...player }))
-      : [EMPTY_PLAYER, EMPTY_PLAYER, EMPTY_PLAYER, EMPTY_PLAYER]
-  );
+  const [loser, setLoser] = useState<PlayerState>(() => initialEntry?.loser || EMPTY_PLAYER);
+  const [recipient, setRecipient] = useState<PlayerState>(() => initialEntry?.recipient || EMPTY_PLAYER);
   const [amount, setAmount] = useState(initialEntry?.amount ?? MIN_AMOUNT);
   const [editingAmount, setEditingAmount] = useState(false);
-  const [winner, setWinner] = useState<Side | null>(initialEntry?.winner ?? null);
 
-  function updatePlayer(index: number, player: PlayerState) {
-    setPlayers((current) =>
-      current.map((item, itemIndex) => itemIndex === index ? player : item)
-    );
-  }
-
-  function playerIsValid(index: number) {
-    const player = players[index];
-    if (!player.value) return false;
-    return player.value !== "custom" || player.text.trim().length > 0;
-  }
-
-  const canSubmit =
-    !disabled &&
-    !pending &&
-    playerIsValid(0) &&
-    playerIsValid(2) &&
-    (!players[1].value || playerIsValid(1)) &&
-    (!players[3].value || playerIsValid(3)) &&
-    amount >= MIN_AMOUNT &&
-    !!winner;
+  const loserIsValid = !!loser.value && (loser.value !== "custom" || loser.text.trim().length > 0);
+  const recipientIsSame = !!recipient.value && recipient.value === loser.value && recipient.text === loser.text;
+  const canSubmit = !disabled && !pending && loserIsValid && !recipientIsSame && amount >= MIN_AMOUNT;
 
   return (
     <form className="score-entry-card" action={formAction}>
       <input type="hidden" name="date" value={date} />
       {initialEntry && <input type="hidden" name="set_id" value={initialEntry.id} />}
       <input type="hidden" name="amount" value={amount} />
-      <input type="hidden" name="winner" value={winner || ""} />
 
       {initialEntry && deleteAction && (
         <div className="score-entry-edit-head">
@@ -234,9 +208,7 @@ function ScoreEntryForm({
             formAction={deleteAction}
             disabled={pending}
             onClick={(event) => {
-              if (!window.confirm("Xóa lượt độ này? Thao tác không thể hoàn tác.")) {
-                event.preventDefault();
-              }
+              if (!window.confirm("Xóa lượt độ này? Thao tác không thể hoàn tác.")) event.preventDefault();
             }}
           >
             Xóa lượt
@@ -245,48 +217,28 @@ function ScoreEntryForm({
       )}
 
       <div className="score-entry-sides">
-        {(["A", "B"] as const).map((side) => {
-          const start = side === "A" ? 0 : 2;
-          return (
-            <div
-              className={winner === side ? "score-entry-side selected" : "score-entry-side"}
-              key={side}
-              role="button"
-              tabIndex={disabled || pending ? -1 : 0}
-              aria-pressed={winner === side}
-              onClick={(event) => {
-                if (disabled || pending) return;
-                if ((event.target as HTMLElement).closest("[data-player-control]")) return;
-                setWinner((current) => current === side ? null : side);
-              }}
-              onKeyDown={(event) => {
-                if (disabled || pending) return;
-                if ((event.target as HTMLElement).closest("[data-player-control]")) return;
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                setWinner((current) => current === side ? null : side);
-              }}
-            >
-              <span>BÊN {side}{winner === side && <b aria-hidden="true">✓</b>}</span>
-              <PlayerInput
-                name={`player_${start}`}
-                player={players[start]}
-                suggestions={suggestions}
-                optional={false}
-                disabled={disabled || pending}
-                onChange={(player) => updatePlayer(start, player)}
-              />
-              <PlayerInput
-                name={`player_${start + 1}`}
-                player={players[start + 1]}
-                suggestions={suggestions}
-                optional
-                disabled={disabled || pending}
-                onChange={(player) => updatePlayer(start + 1, player)}
-              />
-            </div>
-          );
-        })}
+        <div className="score-entry-side selected">
+          <span>NGƯỜI THUA ĐỘ</span>
+          <PlayerInput
+            name="loser"
+            player={loser}
+            suggestions={suggestions}
+            optional={false}
+            disabled={disabled || pending}
+            onChange={setLoser}
+          />
+        </div>
+        <div className="score-entry-side">
+          <span>NGƯỜI NHẬN TIỀN ĐỘ <small>(nếu cần)</small></span>
+          <PlayerInput
+            name="recipient"
+            player={recipient}
+            suggestions={suggestions}
+            optional
+            disabled={disabled || pending}
+            onChange={setRecipient}
+          />
+        </div>
       </div>
 
       {error && <p className="score-entry-error" aria-live="polite">{error}</p>}
@@ -314,17 +266,12 @@ function ScoreEntryForm({
             type="button"
             aria-label="Tăng 5.000đ"
             disabled={disabled || pending}
-            onClick={() => setAmount((value) => Math.max(MIN_AMOUNT, value + AMOUNT_STEP))}
+            onClick={() => setAmount((value) => value + AMOUNT_STEP)}
           >+</button>
         </div>
         <div className={onCancel ? "score-entry-actions" : "score-entry-actions single"}>
           {onCancel && (
-            <button
-              className="score-entry-cancel"
-              type="button"
-              disabled={pending}
-              onClick={onCancel}
-            >
+            <button className="score-entry-cancel" type="button" disabled={pending} onClick={onCancel}>
               Hủy
             </button>
           )}
@@ -339,15 +286,7 @@ function ScoreEntryForm({
 
 export function ScoreEntryCard(props: Props) {
   const [state, formAction, pending] = useActionState(confirmScoreEntryAction, INITIAL_STATE);
-  return (
-    <ScoreEntryForm
-      key={state.successKey}
-      {...props}
-      formAction={formAction}
-      pending={pending}
-      error={state.error}
-    />
-  );
+  return <ScoreEntryForm key={state.successKey} {...props} formAction={formAction} pending={pending} error={state.error} />;
 }
 
 function ScoreHistoryEditForm({
@@ -364,7 +303,6 @@ function ScoreHistoryEditForm({
   onSaved: () => void;
 }) {
   const [state, formAction, pending] = useActionState(updateScoreEntryAction, INITIAL_STATE);
-
   useEffect(() => {
     if (state.successKey > 0) onSaved();
   }, [state.successKey, onSaved]);
@@ -406,14 +344,14 @@ export function ScoreHistoryEditor({
     <div className={editing ? "score-history-item editing" : "score-history-item"}>
       <div className={disabled ? "score-history-row read-only" : "score-history-row"}>
         <span className="score-history-index">#{index + 1}</span>
-        <div className={entry.winner === "A" ? "winner" : ""}>
-          <small>BÊN A</small>
-          <strong>{entry.sideALabel}</strong>
+        <div className="winner">
+          <small>NGƯỜI THUA</small>
+          <strong>{entry.loserLabel || "Không rõ"}</strong>
         </div>
         <b>{entry.amount.toLocaleString("vi-VN")}đ</b>
-        <div className={entry.winner === "B" ? "winner" : ""}>
-          <small>BÊN B</small>
-          <strong>{entry.sideBLabel}</strong>
+        <div>
+          <small>NGƯỜI NHẬN</small>
+          <strong>{entry.recipientLabel || "—"}</strong>
         </div>
         {!disabled && (
           <button

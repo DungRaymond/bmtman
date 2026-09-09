@@ -94,18 +94,6 @@ async function assertWalkinNotSettlement(id: number) {
   if (data?.settlement_run_id) {
     throw new Error("Khoản vãng lai do chốt sổ độ tạo, hãy mở lại ngày trước khi sửa.");
   }
-
-  const { data: plannedItem, error: plannedError } = await getSupabaseAdmin()
-    .from("walkin_fee_summary_items")
-    .select("id,walkin_fee_summaries!inner(status)")
-    .eq("session_walkin_id", id)
-    .eq("walkin_fee_summaries.status", "planned")
-    .limit(1)
-    .maybeSingle();
-  if (plannedError) throw plannedError;
-  if (plannedItem) {
-    throw new Error("Khoản vãng lai đã nằm trong kế hoạch thu, hãy sửa kế hoạch tại Tổng hợp.");
-  }
 }
 
 async function assertPaymentNotLinkedToCollection(paymentId: number) {

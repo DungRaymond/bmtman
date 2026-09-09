@@ -1,31 +1,19 @@
-import {
-  createMonthlySnapshotAction,
-  generateMonthlyFixedFeesAction,
-  monthlyCollectionAction,
-} from "@/app/actions";
+import { createMonthlySnapshotAction } from "@/app/actions";
 import { ConfigWarning } from "@/app/components/ConfigWarning";
 import { MoneyRatio } from "@/app/components/MoneyRatio";
 import { ManagementAuthPanel } from "@/app/components/ManagementAuthPanel";
-import { ConfirmCollectionButton } from "@/app/tong-hop/ConfirmCollectionButton";
 import {
   currentMonthValue,
   chargeTypeLabels,
   formatDateVN,
   getMonthSummary,
-  getMonthlyMemberCards,
   getMonthlyWalkinCollectionCards,
-  getMemberFeeSummaries,
   getMemberPaymentsByMonth,
-  getWalkinFeeSummaries,
   getWalkinsByMonth,
   money,
-  todayInputValue,
-  walkinPlanFieldPrefix,
   walkinSessionDate,
   type WalkinByDay,
   type MonthlyMemberPayment,
-  type MonthlyWalkinCollectionCard,
-  type WalkinFeeSummary,
 } from "@/lib/finance";
 import { isThuRouteAuthenticated } from "@/lib/thuAuth";
 import Link from "next/link";
@@ -68,100 +56,18 @@ function groupMemberPaymentsByDate(rows: MonthlyMemberPayment[]) {
   return Array.from(groups.entries()).sort(([a], [b]) => b.localeCompare(a));
 }
 
-const collectionComponents = [
-  { key: "fixed", label: "Tiền quỹ" },
-  { key: "stake", label: "Tiền độ" },
-  { key: "giao_luu", label: "Phí giao lưu" },
-  { key: "other", label: "Khoản khác" },
-] as const;
-
-function savedComponentAmount(
-  savedItems: { name: string; amount: number }[] | undefined,
-  label: string,
-  fallback: number
-) {
-  if (!savedItems) return fallback;
-  return savedItems.find((item) => item.name === label)?.amount || 0;
-}
-
-function InteractiveWalkinCollectionCard({
-  card,
-  saved,
-}: {
-  card: MonthlyWalkinCollectionCard;
-  saved?: WalkinFeeSummary;
-}) {
-  const prefix = walkinPlanFieldPrefix(card.groupKey);
-  const plannedAmount = saved?.totalDue ?? card.totalOutstanding;
-
-  return (
-    <article className="monthly-collection-member">
-      <div className="monthly-collection-member-head">
-        <div>
-          <strong>{card.name}</strong>
-          <span>Vãng lai</span>
-        </div>
-        <b>{money(plannedAmount)}</b>
-      </div>
-      <div className="monthly-collection-options">
-        <div className="monthly-collection-option">
-          <label>
-            <input
-              name={`${prefix}_selected`}
-              type="checkbox"
-              defaultChecked={plannedAmount > 0}
-            />
-            <span>Vãng lai chưa thu ({card.count} khoản)</span>
-          </label>
-          <input
-            name={`${prefix}_amount`}
-            type="number"
-            min="0"
-            max={card.totalOutstanding}
-            step="1000"
-            defaultValue={plannedAmount}
-            aria-label={`Khoản vãng lai của ${card.name}`}
-          />
-        </div>
-      </div>
-      <div className="monthly-collection-status">
-        <span>Trạng thái thu</span>
-        <strong className={saved?.isSaved ? "partial" : "unpaid"}>
-          {saved?.isSaved ? "Đã lên kế hoạch" : "Chưa lưu kế hoạch"}
-        </strong>
-        {saved?.summaryId && saved.totalDue > 0 && (
-          <button
-            className="btn-primary small-btn"
-            type="submit"
-            name="collect_walkin_summary_id"
-            value={String(saved.summaryId)}
-            data-confirm-collection
-          >
-            Xác nhận đã thu
-          </button>
-        )}
-      </div>
-    </article>
-  );
-}
-
 export default async function TongHopPage({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
   if (!(await isThuRouteAuthenticated())) {
     return <ManagementAuthPanel nextPath="/tong-hop" />;
   }
   const month = params.month || currentMonthValue();
-  const [summary, walkins, memberPayments, monthlyCards, feeSummaries, walkinCollectionCards, walkinFeeSummaries] =
-    await Promise.all([
-      getMonthSummary(month),
-      getWalkinsByMonth(month),
-      getMemberPaymentsByMonth(month),
-      getMonthlyMemberCards(month),
-      getMemberFeeSummaries(month),
-      getMonthlyWalkinCollectionCards(month),
-      getWalkinFeeSummaries(month),
-    ]);
-  const walkinGroups = groupWalkinsByDate(walkins);
+  const [summary, walkins, memberPayments, walkinCollectionCards] = await Promise.all([
+    getMonthSummary(month),
+    getWalkinsByMonth(month),
+    getMemberPaymentsByMonth(month),
+    getMonthlyWalkinCollectionCards(month),
+  ]);  const walkinGroups = groupWalkinsByDate(walkins);
   const unpaidWalkinGroups = walkinCollectionCards;
   const memberPaymentGroups = groupMemberPaymentsByDate(memberPayments);
   const memberDebt = summary.balances.reduce(
@@ -173,12 +79,6 @@ export default async function TongHopPage({ searchParams }: PageProps) {
     0
   );
   const totalDebt = memberDebt + unpaidWalkinTotal;
-  const feeSummaryByMember = new Map(feeSummaries.map((card) => [card.memberId, card]));
-  const walkinSummaryByGroup = new Map(
-    walkinFeeSummaries
-      .filter((summary) => summary.collectionStatus === "planned")
-      .map((summary) => [summary.groupKey, summary])
-  );
 
   return (
     <main>
@@ -346,164 +246,7 @@ export default async function TongHopPage({ searchParams }: PageProps) {
           <span>Công nợ còn lại</span>
           <strong>{money(totalDebt)}</strong>
         </div>
-      </section>
-
-      <section className="card">
-        <div className="section-title">Tạo phí cố định tháng</div>
-        <form className="grid3" action={generateMonthlyFixedFeesAction}>
-          <div>
-            <label>Tháng</label>
-            <input name="period_month" type="month" defaultValue={month} required />
-          </div>
-          <button className="btn-primary" type="submit">
-            Tạo phí quỹ và gom tiền độ tháng
-          </button>
-        </form>
-        <p className="muted" style={{ marginTop: 10 }}>
-          Có thể bấm lại mà không tạo trùng khoản đã có.
-        </p>
-      </section>
-
-      <section className="card monthly-collection-card">
-        <div className="section-title">Chọn khoản thu tháng</div>
-        <p className="muted monthly-collection-help">
-          Chọn khoản thực tế cần chốt cho từng thành viên và các khoản vãng lai cần thu.
-          Tiền độ và phí giao lưu đã gồm phần còn thiếu từ các tháng trước để có thể thu gộp một lần.
-        </p>
-        {monthlyCards.length === 0 && unpaidWalkinGroups.length === 0 ? (
-          <div className="empty">Chưa có thành viên hoặc chưa cấu hình dữ liệu thu.</div>
-        ) : (
-          <form action={monthlyCollectionAction}>
-            <ConfirmCollectionButton />
-            <input type="hidden" name="period_month" value={month} />
-            <div className="grid3 monthly-collection-payment-fields">
-              <div>
-                <label htmlFor="collection-paid-date">Ngày ghi nhận thu</label>
-                <input
-                  id="collection-paid-date"
-                  name="paid_date"
-                  type="date"
-                  defaultValue={todayInputValue()}
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="collection-payment-method">Hình thức thu</label>
-                <select id="collection-payment-method" name="payment_method" defaultValue="cash">
-                  <option value="cash">Tiền mặt</option>
-                  <option value="bank_transfer">Chuyển khoản</option>
-                  <option value="e_wallet">Ví điện tử</option>
-                  <option value="other">Khác</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="collection-payment-note">Ghi chú thu</label>
-                <input id="collection-payment-note" name="payment_note" placeholder="Không bắt buộc" />
-              </div>
-            </div>
-            <div className="monthly-collection-grid">
-              {monthlyCards.map((card) => {
-                const saved = feeSummaryByMember.get(card.memberId);
-                const savedItems = saved?.isSaved ? saved.items : undefined;
-                const values = {
-                  fixed: savedComponentAmount(savedItems, "Tiền quỹ", card.fixedFee),
-                  stake: savedComponentAmount(savedItems, "Tiền độ", card.stakeFee),
-                  giao_luu: savedComponentAmount(savedItems, "Phí giao lưu", card.giaoLuuFee),
-                  other: savedComponentAmount(savedItems, "Khoản khác", card.otherFee),
-                };
-                const total = Object.values(values).reduce((sum, amount) => sum + amount, 0);
-                return (
-                  <article
-                    className={
-                      card.status === "fixed"
-                        ? "monthly-collection-member is-fixed-member"
-                        : "monthly-collection-member is-former-fixed-member"
-                    }
-                    key={card.memberId}
-                  >
-                    <div className="monthly-collection-member-head">
-                      <div>
-                        <strong>{card.name}</strong>
-                        <span>{card.status === "fixed" ? "Cố định" : "Cố định cũ"}</span>
-                      </div>
-                      <b>{money(total)}</b>
-                    </div>
-                    <div className="monthly-collection-options">
-                      {collectionComponents.map((component) => {
-                        const amount = values[component.key];
-                        const prefix = `member_${card.memberId}_${component.key}`;
-                        return (
-                          <div className="monthly-collection-option" key={component.key}>
-                            <label>
-                              <input
-                                name={`${prefix}_selected`}
-                                type="checkbox"
-                                defaultChecked={amount > 0}
-                              />
-                              <span>{component.label}</span>
-                            </label>
-                            <input
-                              name={`${prefix}_amount`}
-                              type="number"
-                              min="0"
-                              step="1000"
-                              defaultValue={amount}
-                              aria-label={`${component.label} của ${card.name}`}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="monthly-collection-status">
-                      <span>Trạng thái thu</span>
-                      <strong
-                        className={
-                          saved?.collectionStatus === "collected"
-                            ? "paid"
-                            : saved?.collectionStatus === "partially_collected"
-                              ? "partial"
-                              : "unpaid"
-                        }
-                      >
-                        {saved?.collectionStatus === "collected"
-                          ? "Đã thu"
-                          : saved?.collectionStatus === "partially_collected"
-                            ? "Thu một phần"
-                            : saved?.isSaved
-                              ? "Đã lên kế hoạch"
-                              : "Chưa lưu kế hoạch"}
-                      </strong>
-                      {saved?.summaryId && saved.outstanding > 0 && saved.collectionStatus !== "collected" && (
-                        <button
-                          className="btn-primary small-btn"
-                          type="submit"
-                          name="collect_summary_id"
-                          value={String(saved.summaryId)}
-                          data-confirm-collection
-                        >
-                          Xác nhận đã thu
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-              {unpaidWalkinGroups.map((group) => (
-                <InteractiveWalkinCollectionCard
-                  card={group}
-                  saved={walkinSummaryByGroup.get(group.groupKey)}
-                  key={group.groupKey}
-                />
-              ))}
-            </div>
-            <button className="btn-primary" type="submit">
-              Lưu kế hoạch thu
-            </button>
-          </form>
-        )}
-      </section>
-
-      <section className="debt-card-grid">
+      </section><section className="debt-card-grid">
         <div className="debt-summary-card">
           <div>
             <span>Thẻ tổng kết chi phí thành viên</span>

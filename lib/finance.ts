@@ -54,6 +54,8 @@ export type ScoreSet = {
   winner: "A" | "B" | null;
   locked: boolean;
   players: [ScorePlayer, ScorePlayer, ScorePlayer, ScorePlayer];
+  loser?: ScorePlayer;
+  recipient?: ScorePlayer;
 };
 
 export type DailyScorecardPayload = {
@@ -76,8 +78,8 @@ export type MonthlyStakeTurn = {
   setId: string;
   setNumber: number;
   amount: number;
-  losingSide: "A" | "B";
-  winnerNames: string;
+  loserNames: string;
+  recipientNames: string;
 };
 
 export type MonthlyStakeDay = {
@@ -693,15 +695,25 @@ export async function getMonthlyStakePeople(month: string) {
   for (const rawCard of (scorecardsResult.data || []) as DailyScorecardRow[]) {
     const payload = normalizeScorecardPayload(rawCard.payload);
     for (const [setIndex, set] of payload.sets.entries()) {
-      if (!set.winner || set.amount <= 0) continue;
+      if (set.amount <= 0 || (!set.winner && (!set.loser || set.loser.type === "empty"))) continue;
 
-      const winnerPlayers = set.winner === "A"
+      const legacyWinnerPlayers = set.winner === "A"
         ? set.players.slice(0, 2)
         : set.players.slice(2, 4);
-      const loserPlayers = set.winner === "A"
+      const legacyLoserPlayers = set.winner === "A"
         ? set.players.slice(2, 4)
         : set.players.slice(0, 2);
-      const winnerNames = winnerPlayers
+      const loserPlayers = set.loser && set.loser.type !== "empty"
+        ? [set.loser]
+        : legacyLoserPlayers;
+      const recipientPlayers = set.recipient && set.recipient.type !== "empty"
+        ? [set.recipient]
+        : legacyWinnerPlayers;
+      const loserNames = loserPlayers
+        .map((player) => scorePerson(player, rawCard.score_date, memberNames, walkinNames).name)
+        .filter(Boolean)
+        .join(" & ");
+      const recipientNames = recipientPlayers
         .map((player) => scorePerson(player, rawCard.score_date, memberNames, walkinNames).name)
         .filter(Boolean)
         .join(" & ");
@@ -731,8 +743,8 @@ export async function getMonthlyStakePeople(month: string) {
           setId: set.id,
           setNumber: setIndex + 1,
           amount: set.amount,
-          losingSide: set.winner === "A" ? "B" : "A",
-          winnerNames,
+          loserNames,
+          recipientNames,
         });
       }
     }
@@ -831,11 +843,6 @@ export function walkinCollectionGroupKey(row: WalkinByDay) {
   if (name) return `name:${name.toLocaleLowerCase("vi")}`;
   return `session:${row.session_id}:${row.walkin_number}`;
 }
-
-export function walkinPlanFieldPrefix(groupKey: string) {
-  return `walkin_${Buffer.from(groupKey, "utf8").toString("base64url")}`;
-}
-
 export function groupUnpaidWalkinCollectionCards(rows: WalkinByDay[]) {
   const cards = new Map<string, MonthlyWalkinCollectionCard>();
 
