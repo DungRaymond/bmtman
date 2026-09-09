@@ -1,10 +1,10 @@
 # BMT Badminton — Project Context
 
-Tài liệu này dùng để cung cấp bối cảnh nhanh cho AI agent khi lập plan hoặc tiếp tục phát triển project.
+Tài liệu bối cảnh nhanh cho AI agent khi tiếp tục phát triển dự án.
 
 ## Tổng quan
 
-Đây là ứng dụng nội bộ quản lý ghi độ cầu lông và quỹ nhóm.
+Ứng dụng nội bộ quản lý ghi độ cầu lông và quỹ nhóm. Người dùng ghi lượt độ theo ngày, quản lý các khoản thu/chi, theo dõi công nợ và xuất báo cáo tài chính theo khoảng tháng.
 
 ## Stack và quy ước kỹ thuật
 
@@ -14,16 +14,36 @@ Tài liệu này dùng để cung cấp bối cảnh nhanh cho AI agent khi lậ
 - Server Components là mặc định; phần tương tác dùng Client Components và Server Actions.
 - Không có test runner; kiểm tra bằng `npm run lint` và `npm run build`.
 - Trước khi sửa Next.js, đọc guide tương ứng trong `node_modules/next/dist/docs/` theo `AGENTS.md`.
+- Không đưa Supabase service-role key xuống Client Component.
+- Mutation quản trị phải gọi `assertAdmin()`; sau mutation phải `revalidatePath()` các route liên quan.
 
 ## Các route
 
-- `/`: ghi lượt độ theo ngày, tối đa 12 lượt; chọn người chơi, số tiền, bên thắng; xem lịch sử; sửa/xóa lượt chưa chốt; chốt sổ ngày.
-- `/thu`: quản lý khoản phải thu, thanh toán thành viên, khách vãng lai, thành viên cố định cũ và khoản thủ công. Production yêu cầu PIN quản trị.
+- `/`: ghi lượt độ theo ngày, sửa/xóa lượt chưa chốt và chốt sổ ngày.
+- `/thu`: quản lý khoản phải thu, thanh toán thành viên, khách vãng lai, thành viên cố định cũ và khoản thủ công.
 - `/thu/so-thu`: sổ thu chi tiết, CRUD charges/payments/walk-in.
 - `/chi`: quản lý khoản chi.
-- `/tong-hop`: tổng hợp quỹ tháng, tồn đầu/cuối, thu thành viên, thu vãng lai, chi phí; tạo phí quỹ cố định; chọn các khoản cần thu theo từng thành viên; chốt số dư tháng.
-- `/tong-hop/memfee-cards`: thẻ tổng hợp các khoản phải thu theo thành viên.
+- `/tong-hop`: tổng hợp quỹ, thu–chi và công nợ theo khoảng tháng; xuất bảng tính.
+- `/tong-hop/export`: route xuất báo cáo Excel/CSV theo tháng bắt đầu và tháng kết thúc.
+- `/tong-hop/memfee-cards`: thẻ tổng hợp khoản phải thu theo thành viên.
 - `/tong-hop/tien-do`: thống kê tiền độ theo người/tháng.
+
+Route `/tong-hop` không còn giao diện kế hoạch thu. Các báo cáo xuất khoản vãng lai được gom theo ngày để dễ đối soát.
+
+## Quy tắc ghi độ
+
+- Mỗi lượt ghi người thua độ, người nhận tiền độ nếu cần và số tiền.
+- Người thua là nguồn xác định nghĩa vụ tiền độ; người nhận chỉ là thông tin đối ứng khi có.
+- Dữ liệu cũ theo mô hình hai bên vẫn được đọc tương thích khi hiển thị và tính toán.
+- Lượt đã chốt không được sửa/xóa.
+- Tiền lưu dạng số nguyên VND.
+
+## Quy tắc tài chính
+
+- Thành viên `fixed` có quỹ cố định tháng; tiền độ được cộng dồn từ `session_stake_points`.
+- Thành viên `former_fixed` có phí giao lưu và tiền độ theo từng buổi.
+- Tiền độ/phí giao lưu chưa thu có thể tồn từ tháng trước và được cộng vào khoản cần thu hiện tại.
+- Các khoản thu và chi được tổng hợp theo tháng; báo cáo có thể lọc từ tháng X đến tháng Y.
 
 ## Data model chính
 
@@ -35,40 +55,17 @@ Tài liệu này dùng để cung cấp bối cảnh nhanh cho AI agent khi lậ
 - `session_walkins`: khoản phải thu khách vãng lai.
 - `member_fee_summaries`: snapshot khoản cần thu theo thành viên/tháng.
 - `monthly_fund_snapshot`: số dư đầu/cuối tháng.
-- `fee_rules`: cấu hình phí theo trạng thái thành viên và thời gian.
-- Thành viên có trạng thái `fixed` hoặc `former_fixed`.
-
-## Quy tắc nghiệp vụ
-
-- Thành viên `fixed` có quỹ cố định tháng; tiền độ được cộng dồn từ `session_stake_points`.
-- Thành viên `former_fixed` có phí giao lưu và tiền độ theo từng buổi.
-- Tiền độ/phí giao lưu chưa thu có thể tồn từ tháng trước và được cộng vào khoản cần thu tháng hiện tại.
-- Ngày đã chốt thì không được sửa/xóa lượt độ.
-- Tiền lưu dạng số nguyên VND.
-- Không đưa Supabase service-role key xuống Client Component.
-- Mutation quản trị phải gọi `assertAdmin()`.
-- Sau mutation phải `revalidatePath` các route liên quan.
-
-## Tính năng đã làm gần đây
-
-- Sửa/xóa lượt độ chưa chốt ở trang `/`.
-- `/tong-hop` có phần chọn khoản thu theo từng thành viên:
-  - Tiền quỹ.
-  - Tiền độ.
-  - Phí giao lưu.
-  - Khoản khác.
-- Có thể bỏ chọn hoặc chỉnh số tiền trước khi chốt.
-- Đã bổ sung tính tiền độ/phí giao lưu còn thiếu từ các tháng trước.
-- Đã bỏ phần liệt kê “Công nợ cao nhất” khỏi `/tong-hop`.
-- Lựa chọn tháng được lưu vào `member_fee_summaries`.
-- Chức năng chọn khoản thu hiện lưu kế hoạch/snapshot; chưa tự động ghi `payment` khi bấm chốt.
+- `fee_rules`: cấu hình phí theo trạng thái thành viên.
 
 ## File quan trọng
 
 - `app/actions.ts`: Server Actions.
-- `app/tong-hop/page.tsx`: trang tổng hợp và chọn khoản thu tháng.
-- `app/tong-hop/memfee-cards/page.tsx`: thẻ phí thành viên.
+- `app/page.tsx`: trang ghi độ.
 - `app/ScoreEntryCard.tsx`: UI ghi/sửa lượt độ.
+- `app/tong-hop/page.tsx`: tổng hợp quỹ và bộ lọc báo cáo.
+- `app/tong-hop/export/route.ts`: xuất báo cáo bảng tính.
+- `app/tong-hop/memfee-cards/page.tsx`: thẻ khoản phải thu thành viên.
+- `app/tong-hop/tien-do/page.tsx`: thống kê tiền độ.
 - `lib/finance.ts`: types, truy vấn Supabase và tính toán tài chính.
 - `lib/security.ts`, `lib/thuAuth.ts`: xác thực quản trị.
 - `app/globals.css`: CSS toàn bộ ứng dụng.
