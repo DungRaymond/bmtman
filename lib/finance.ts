@@ -84,8 +84,7 @@ export type MonthlyStakeTurn = {
 
 export type MonthlyStakeDay = {
   date: string;
-  settled: boolean;
-  total: number;
+total: number;
   turns: MonthlyStakeTurn[];
 };
 
@@ -732,8 +731,7 @@ export async function getMonthlyStakePeople(month: string) {
         if (!day) {
           day = {
             date: rawCard.score_date,
-            settled: !!rawCard.settled_at,
-            total: 0,
+total: 0,
             turns: [],
           };
           personGroup.days.set(rawCard.score_date, day);

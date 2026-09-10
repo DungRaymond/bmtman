@@ -86,9 +86,6 @@ export default async function StakeSummaryPage({ searchParams }: PageProps) {
                       <div className="stake-day-head">
                         <div>
                           <strong>{formatDateVN(day.date)}</strong>
-                          <span className={day.settled ? "settled" : "unsettled"}>
-                            {day.settled ? "Đã chốt" : "Chưa chốt"}
-                          </span>
                         </div>
                         <b>{money(day.total)}</b>
                       </div>

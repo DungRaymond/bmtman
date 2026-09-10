@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
-  getActiveMembers,
+
   getDailyScorecard,
   getFeeAmount,
   getMemberStatus,
@@ -159,43 +159,6 @@ async function upsertSessionCharge(input: {
   if (error) throw error;
 }
 
-async function ensureWalkinSessionFee(input: {
-  sessionId: number;
-  walkinNumber: number;
-  amount: number;
-  settlementRunId?: number;
-}) {
-  const { error } = await getSupabaseAdmin().from("session_walkins").upsert(
-    {
-      session_id: input.sessionId,
-      walkin_number: input.walkinNumber,
-      fee_type: "session_fee",
-      amount_expected: input.amount,
-      is_paid: 0,
-      amount_collected: null,
-      ...(input.settlementRunId !== undefined
-        ? { settlement_run_id: input.settlementRunId }
-        : {}),
-      note: "Tự tạo khi chốt sổ độ ngày",
-    },
-    {
-      onConflict: "session_id,walkin_number,fee_type",
-      ignoreDuplicates: true,
-    }
-  );
-  if (error) throw error;
-  if (input.settlementRunId !== undefined) {
-    const { error: claimError } = await getSupabaseAdmin()
-      .from("session_walkins")
-      .update({ settlement_run_id: input.settlementRunId })
-      .eq("session_id", input.sessionId)
-      .eq("walkin_number", input.walkinNumber)
-      .eq("fee_type", "session_fee")
-      .is("settlement_run_id", null);
-    if (claimError) throw claimError;
-  }
-}
-
 async function saveDailyScorecard(date: string, payload: DailyScorecardPayload) {
   const { error } = await getSupabaseAdmin().from("daily_scorecards").upsert(
     {
@@ -236,32 +199,6 @@ function scoreSetHasDuplicatePlayers(set: ScoreSet) {
   return !!loser && !!recipient && loser === recipient;
 }
 
-function losingPlayers(set: ScoreSet) {
-  if (set.loser && set.loser.type !== "empty") return [set.loser];
-  return set.winner === "A" ? set.players.slice(2, 4) : set.players.slice(0, 2);
-}
-
-function presentPlayers(set: ScoreSet) {
-  const directPlayers = [set.loser, set.recipient].filter(
-    (player): player is ScorePlayer => !!player && player.type !== "empty"
-  );
-  if (directPlayers.length > 0) return directPlayers;
-  return set.players.filter((player) => player.type !== "empty");
-}
-
-function addToMap(map: Map<number, number>, key: number, value: number) {
-  map.set(key, (map.get(key) || 0) + value);
-}
-
-function guestKey(name: string) {
-  return name.trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
-}
-
-function assertScorecardIsOpen(settledAt: string | null) {
-  if (settledAt) {
-    throw new Error("NgÃ y nÃ y Ä‘Ã£ chá»‘t sá»• Ä‘á»™, khÃ´ng thá»ƒ sá»­a thÃªm.");
-  }
-}
 export async function confirmScoreEntryAction(
   previousState: ConfirmScoreEntryState,
   formData: FormData
@@ -269,7 +206,7 @@ export async function confirmScoreEntryAction(
   try {
     const date = requiredString(formData, "date");
     const card = await getDailyScorecard(date);
-    assertScorecardIsOpen(card.settled_at);
+
     const payload = normalizeScorecardPayload(card.payload);
     if (payload.sets.length >= 12) throw new Error("Má»™t ngÃ y tá»‘i Ä‘a 12 tháº» ghi Ä‘á»™.");
 
@@ -306,7 +243,7 @@ export async function updateScoreEntryAction(
     const date = requiredString(formData, "date");
     const setId = requiredString(formData, "set_id");
     const card = await getDailyScorecard(date);
-    assertScorecardIsOpen(card.settled_at);
+
     const payload = normalizeScorecardPayload(card.payload);
     const index = payload.sets.findIndex((set) => set.id === setId);
     if (index < 0) throw new Error("KhÃ´ng tÃ¬m tháº¥y lÆ°á»£t Ä‘á»™.");
@@ -341,7 +278,7 @@ export async function deleteScoreSetAction(formData: FormData) {
   const date = requiredString(formData, "date");
   const setId = requiredString(formData, "set_id");
   const card = await getDailyScorecard(date);
-  assertScorecardIsOpen(card.settled_at);
+
   const payload = normalizeScorecardPayload(card.payload);
   if (!payload.sets.some((set) => set.id === setId)) {
     throw new Error("Không tìm thấy lượt độ.");
@@ -351,234 +288,7 @@ export async function deleteScoreSetAction(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/tong-hop/tien-do");
   redirect(`/?date=${date}`);
-}
-function isMissingSettlementRpc(error: { code?: string } | null | undefined) {
-  return !!error && ["PGRST202", "PGRST205", "42883"].includes(error.code || "");
-}
-export async function settleDailyScorecardAction(formData: FormData) {
-  await assertAdmin();
-  const date = requiredString(formData, "date");
-  const card = await getDailyScorecard(date);
-  if (card.settled_at) {
-    redirect(`/?date=${date}`);
-  }
-  const payload = normalizeScorecardPayload(card.payload);
-  if (payload.sets.length === 0) throw new Error("Chưa có thẻ ghi độ nào.");
-  if (payload.sets.some((set) => !set.locked)) {
-    throw new Error("Cần khóa tất cả thẻ ghi độ trước khi chốt sổ.");
-  }
-
-  const session = await ensureSession(date);
-  const memberStakes = new Map<number, number>();
-  const walkinStakes = new Map<number, number>();
-  const presentMemberIds = new Set<number>();
-  const presentWalkinNumbers = new Set<number>();
-  const presentGuestNames = new Map<string, string>();
-  const guestStakes = new Map<string, number>();
-
-  for (const set of payload.sets) {
-    for (const player of presentPlayers(set)) {
-      if (player.type === "member" && player.memberId) {
-        presentMemberIds.add(player.memberId);
-      }
-      if (player.type === "walkin" && player.walkinNumber) {
-        presentWalkinNumbers.add(player.walkinNumber);
-      }
-      if (player.type === "guest" && player.name) {
-        presentGuestNames.set(guestKey(player.name), player.name);
-      }
-    }
-
-    for (const player of losingPlayers(set)) {
-      if (player.type === "member" && player.memberId) {
-        addToMap(memberStakes, player.memberId, set.amount);
-      }
-      if (player.type === "walkin" && player.walkinNumber) {
-        addToMap(walkinStakes, player.walkinNumber, set.amount);
-      }
-      if (player.type === "guest" && player.name) {
-        const key = guestKey(player.name);
-        guestStakes.set(key, (guestStakes.get(key) || 0) + set.amount);
-      }
-    }
-  }
-
-  const supabase = getSupabaseAdmin();
-  const [walkinFee, formerFixedFee, activeMemberRows] = await Promise.all([
-    getFeeAmount("walkin", "base_fee", date),
-    getFeeAmount("former_fixed", "base_fee", date),
-    getActiveMembers(date),
-  ]);
-  const memberStatusById = new Map(
-    activeMemberRows.map((row) => [row.member_id, row.status])
-  );
-
-  const { data: runId, error: runError } = await supabase.rpc(
-    "create_daily_scorecard_settlement_run",
-    { p_score_date: date }
-  );
-  if (runError && !isMissingSettlementRpc(runError)) {
-    throw new Error(runError.message || "Không tạo được settlement batch cho ngày.");
-  }
-  const settlementRunId = runId ? Number(runId) : undefined;
-
-  try {
-    const { data: existingWalkins, error: existingWalkinsError } = await supabase
-      .from("session_walkins")
-      .select("id,walkin_number,walkin_name,fee_type")
-      .eq("session_id", session.session_id);
-    if (existingWalkinsError) throw existingWalkinsError;
-  const guestNumbers = new Map<string, number>();
-  for (const row of existingWalkins || []) {
-    if (row.fee_type === "session_fee" && row.walkin_name) {
-      guestNumbers.set(guestKey(row.walkin_name), row.walkin_number);
-    }
-  }
-
-  for (const [key, name] of presentGuestNames) {
-    if (!guestNumbers.has(key)) {
-      await createWalkinReceivables({
-        sessionId: session.session_id,
-        count: 1,
-        name,
-        amount: walkinFee,
-        settlementRunId,
-      });
-      const { data: created, error: createdError } = await supabase
-        .from("session_walkins")
-        .select("walkin_number")
-        .eq("session_id", session.session_id)
-        .eq("fee_type", "session_fee")
-        .eq("walkin_name", name)
-        .order("id", { ascending: false })
-        .limit(1)
-        .single();
-      if (createdError) throw createdError;
-      guestNumbers.set(key, created.walkin_number);
-    }
-    const walkinNumber = guestNumbers.get(key);
-    if (walkinNumber && guestStakes.has(key)) {
-      addToMap(walkinStakes, walkinNumber, guestStakes.get(key) || 0);
-    }
-  }
-
-  const memberUpdates = Array.from(presentMemberIds, async (memberId) => {
-    const status = memberStatusById.get(memberId);
-    if (!status) return;
-    const stakePoints = memberStakes.get(memberId) || 0;
-
-    const { error } = await supabase.from("session_stake_points").upsert(
-      {
-        session_id: session.session_id,
-        member_id: memberId,
-        stake_points: stakePoints,
-        settlement_run_id: settlementRunId,
-      },
-      { onConflict: "session_id,member_id" }
-    );
-    if (error) throw error;
-
-    if (status === "former_fixed") {
-      await Promise.all([
-        upsertSessionCharge({
-          memberId,
-          sessionId: session.session_id,
-          chargeType: "session_giaoluu_fee",
-          amount: formerFixedFee,
-          note: "Tự tạo khi chốt sổ độ ngày",
-          settlementRunId,
-        }),
-        upsertSessionCharge({
-          memberId,
-          sessionId: session.session_id,
-          chargeType: "session_stake_fee",
-          amount: stakePoints,
-          note: "Tự tổng hợp từ thẻ ghi độ ngày",
-          settlementRunId,
-        }),
-      ]);
-    }
-  });
-
-  const walkinFeeUpdates = Array.from(presentWalkinNumbers, (walkinNumber) =>
-    ensureWalkinSessionFee({
-      sessionId: session.session_id,
-      walkinNumber,
-      amount: walkinFee,
-      settlementRunId,
-    })
-  );
-
-  const walkinStakeUpdates = Array.from(walkinStakes, async ([walkinNumber, amount]) => {
-    const { error } = await supabase.from("session_walkins").upsert(
-      {
-        session_id: session.session_id,
-        walkin_number: walkinNumber,
-        fee_type: "stake_fee",
-        amount_expected: amount,
-        is_paid: 1,
-        amount_collected: amount,
-        settlement_run_id: settlementRunId,
-        note: "Tự tổng hợp từ thẻ ghi độ ngày",
-      },
-      { onConflict: "session_id,walkin_number,fee_type" }
-    );
-    if (error) throw error;
-  });
-
-  await Promise.all([...memberUpdates, ...walkinFeeUpdates, ...walkinStakeUpdates]);
-
-    if (settlementRunId !== undefined) {
-      const { error: finalizeError } = await supabase.rpc(
-        "finalize_daily_scorecard_settlement",
-        { p_run_id: settlementRunId, p_score_date: date }
-      );
-      if (finalizeError) throw finalizeError;
-    } else {
-      const settledAt = new Date().toISOString();
-      const { error: legacyFinalizeError } = await supabase
-        .from("daily_scorecards")
-        .update({ settled_at: settledAt, updated_at: settledAt })
-        .eq("score_date", date)
-        .is("settled_at", null);
-      if (legacyFinalizeError) throw legacyFinalizeError;
-    }
-  } catch (error) {
-    if (settlementRunId !== undefined) {
-      const { error: abortError } = await supabase.rpc(
-        "abort_daily_scorecard_settlement",
-        { p_run_id: settlementRunId }
-      );
-      if (abortError) console.error("Không thể dọn settlement batch lỗi", abortError);
-    }
-    throw error;
-  }
-
-  revalidatePath("/");
-  revalidatePath("/thu");
-  revalidatePath("/tong-hop");
-  redirect(`/?date=${date}`);
-}
-
-export async function reopenDailyScorecardAction(formData: FormData) {
-  await assertAdmin();
-  const date = requiredString(formData, "date");
-  const reason = requiredString(formData, "reason");
-  if (reason.length > 500) throw new Error("Lý do mở lại không được quá 500 ký tự.");
-
-  const { error } = await getSupabaseAdmin().rpc("reopen_daily_scorecard", {
-    p_score_date: date,
-    p_reason: reason,
-  });
-  if (error) throw new Error(`Không thể mở lại ngày: ${error.message}`);
-
-  revalidatePath("/");
-  revalidatePath("/tong-hop");
-  revalidatePath("/tong-hop/tien-do");
-  redirect(`/?date=${date}`);
-}
-
-export async function setSessionCancelledAction(formData: FormData) {
+}export async function setSessionCancelledAction(formData: FormData) {
   await assertAdmin();
   const date = requiredString(formData, "date");
   const sessionId = intValue(formData, "session_id");
