@@ -469,6 +469,8 @@ function normalizeScoreSet(raw: unknown, index: number): ScoreSet {
     id: typeof row.id === "string" && row.id ? row.id : `set-${index + 1}`,
     amount: normalizeNumber(row.amount),
     winner: row.winner === "A" || row.winner === "B" ? row.winner : null,
+    loser: normalizeScorePlayer(row.loser),
+    recipient: normalizeScorePlayer(row.recipient),
     locked: row.locked === true,
     players: [
       normalizeScorePlayer(players[0]),

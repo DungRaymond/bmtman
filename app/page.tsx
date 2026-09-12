@@ -7,7 +7,7 @@ import {
 } from "@/app/ScoreEntryCard";
 import {
   formatDateVN,
-  currentMonthValue,
+
   getActiveMembers,
   getDailyScorecard,
   getMonthlyStakePeople,
@@ -88,20 +88,20 @@ function editablePlayer(player: ScorePlayer, members: Member[]) {
 export default async function Home({ searchParams }: PageProps) {
   const params = (await searchParams) || {};
   const today = todayInputValue();
-  const currentMonth = currentMonthValue();
   const date = /^\d{4}-\d{2}-\d{2}$/.test(params.date || "")
     ? params.date as string
     : today;
-const [members, activeMembers, walkinNames, scorecard, rawMonthlyStakePeople] = await Promise.all([
+  const viewedMonth = date.slice(0, 7);
+  const [members, activeMembers, walkinNames, scorecard, rawMonthlyStakePeople] = await Promise.all([
     getMembers(),
     getActiveMembers(date),
     getNamedWalkinNames(),
     getDailyScorecard(date),
-    getMonthlyStakePeople(currentMonth),
+    getMonthlyStakePeople(viewedMonth),
   ]);
   const monthlyStakePeople = rawMonthlyStakePeople
     .map((person) => {
-      const days = person.days.filter((day) => day.date <= today);
+      const days = person.days;
       return {
         ...person,
         days,
@@ -111,7 +111,7 @@ const [members, activeMembers, walkinNames, scorecard, rawMonthlyStakePeople] = 
     .filter((person) => person.days.length > 0);
   const monthlyStakeTotal = monthlyStakePeople.reduce((sum, person) => sum + person.total, 0);
   const sets = scorecard.payload.sets;
-const suggestions = playerSuggestions(activeMembers, walkinNames);
+  const suggestions = playerSuggestions(activeMembers, walkinNames);
 
   return (
     <main className="score-page">
