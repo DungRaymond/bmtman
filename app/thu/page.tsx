@@ -124,6 +124,7 @@ export default async function ThuPage({ searchParams }: PageProps) {
   const unpaidWalkins = walkins.filter((walkin) => walkinOutstandingAmount(walkin) > 0);
   const memberDebtRows = balances.filter((row) => row.outstanding_debt > 0);
   const totalMemberDebt = balances.reduce((sum, row) => sum + row.outstanding_debt, 0);
+  const totalUnpaidCharges = unpaidCharges.reduce((sum, charge) => sum + outstandingAmount(charge), 0);
   const totalWalkinDebt = unpaidWalkins.reduce(
     (sum, walkin) => sum + walkinOutstandingAmount(walkin),
     0
@@ -158,7 +159,7 @@ export default async function ThuPage({ searchParams }: PageProps) {
         <details className="received-member-card">
           <summary className="received-member-summary">
             <div><strong>Khoản thành viên chưa thu</strong></div>
-            <b>{unpaidCharges.length}</b>
+            <b>{money(totalUnpaidCharges)}</b>
           </summary>
           <div className="received-payment-list">
             {unpaidCharges.length === 0 && <div className="empty">Không còn khoản chưa thu.</div>}
