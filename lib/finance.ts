@@ -1263,31 +1263,58 @@ export async function getMemberFeeSummaries(month: string) {
 
   const { data: savedRows, error: savedError } = await getSupabaseAdmin()
     .from("member_fee_summaries")
-    .select("id,member_id,status,collected_at")
+    .select("id,member_id,member_status,status,collected_at,items,total_due,total_paid,outstanding,members(name)")
     .eq("period_month", month);
 
-  const savedByMember = new Map(
-    (!savedError ? savedRows || [] : []).map((row) => [row.member_id, row])
-  );
+  if (!savedError && savedRows && savedRows.length > 0) {
+    return savedRows.map((row) => {
+      const member = Array.isArray(row.members) ? row.members[0] : row.members;
+      const items = Array.isArray(row.items)
+        ? row.items.filter(
+            (item): item is MemberFeeItem =>
+              typeof item === "object" &&
+              item !== null &&
+              typeof (item as MemberFeeItem).name === "string" &&
+              Number.isFinite(Number((item as MemberFeeItem).amount))
+          ).map((item) => ({
+            name: memberFeeItemName(item.name),
+            amount: Number(item.amount),
+            ...(item.component === "fixed" ||
+            item.component === "stake" ||
+            item.component === "giao_luu" ||
+            item.component === "other"
+              ? { component: item.component }
+              : {}),
+          }))
+        : [];
 
-  return cards.map((card) => {
-    const live = memberCardToFeeSummary(card);
-    const saved = savedByMember.get(card.memberId);
-    if (!saved) return live;
+      const totalDue = Math.max(Number(row.total_due) || 0, 0);
+      const totalPaid = Math.min(Math.max(Number(row.total_paid) || 0, 0), totalDue);
+      const outstanding = Math.max(totalDue - totalPaid, 0);
 
-    return {
-      ...live,
-      summaryId: saved.id,
-      collectionStatus: resolveMemberFeeCollectionStatus(
-        saved.status,
-        live.totalDue,
-        live.totalPaid,
-        live.outstanding
-      ),
-      collectedAt: saved.collected_at || null,
-      isSaved: true,
-    };
-  });
+      return {
+        summaryId: row.id,
+        memberId: row.member_id,
+        memberNumber: String(row.member_id).padStart(2, "0"),
+        name: member?.name || `Thành viên ${row.member_id}`,
+        status: row.member_status as "fixed" | "former_fixed",
+        items,
+        totalDue,
+        totalPaid,
+        outstanding,
+        collectionStatus: resolveMemberFeeCollectionStatus(
+          row.status,
+          totalDue,
+          totalPaid,
+          outstanding
+        ),
+        collectedAt: row.collected_at || null,
+        isSaved: true,
+      };
+    });
+  }
+
+  return cards.map(memberCardToFeeSummary);
 }
 
 function memberCardToFeeSummary(card: MonthlyMemberCard): MemberFeeSummary {
@@ -1310,6 +1337,18 @@ function memberCardToFeeSummary(card: MonthlyMemberCard): MemberFeeSummary {
     collectedAt: null,
     isSaved: false,
   };
+}
+
+function memberFeeItemName(name: string) {
+  const labels: Record<string, string> = {
+    "Tien quy": "Tiền quỹ",
+    "Tien do": "Tiền độ",
+    "Phi giao luu": "Phí giao lưu",
+    "Khoan khac": "Khoản khác",
+    "No ton thang truoc": "Khoản từ tháng trước",
+    "Nợ tồn tháng trước": "Khoản từ tháng trước",
+  };
+  return labels[name] || name;
 }
 
 export const getFeeAmount = cache(async function getFeeAmount(

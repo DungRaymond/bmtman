@@ -220,7 +220,7 @@ export async function confirmScoreEntryAction(
       players: [emptyScorePlayer(), emptyScorePlayer(), emptyScorePlayer(), emptyScorePlayer()],
     };
 
-    if (set.amount < 10000) throw new Error("Mức độ phải từ 10.000đ.");
+    if (set.amount < 5000) throw new Error("Má»©c Ä‘á»™ pháº£i tá»« 5.000Ä‘.");
     if (!scoreSetIsReady(set)) throw new Error("Cáº§n chá»n ngÆ°á»i thua Ä‘á»™.");
     if (scoreSetHasDuplicatePlayers(set)) throw new Error("NgÆ°á»i thua vÃ  ngÆ°á»i nháº­n khÃ´ng Ä‘Æ°á»£c trÃ¹ng nhau.");
 
@@ -258,7 +258,7 @@ export async function updateScoreEntryAction(
       players: [emptyScorePlayer(), emptyScorePlayer(), emptyScorePlayer(), emptyScorePlayer()],
     };
 
-    if (updated.amount < 10000) throw new Error("Mức độ phải từ 10.000đ.");
+    if (updated.amount < 5000) throw new Error("Má»©c Ä‘á»™ pháº£i tá»« 5.000Ä‘.");
     if (!scoreSetIsReady(updated)) throw new Error("Cáº§n chá»n ngÆ°á»i thua Ä‘á»™.");
     if (scoreSetHasDuplicatePlayers(updated)) throw new Error("NgÆ°á»i thua vÃ  ngÆ°á»i nháº­n khÃ´ng Ä‘Æ°á»£c trÃ¹ng nhau.");
 

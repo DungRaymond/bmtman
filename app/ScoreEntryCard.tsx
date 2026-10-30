@@ -36,9 +36,8 @@ export type ScoreHistoryEntry = EditableScoreEntry & {
 
 const INITIAL_STATE: ConfirmScoreEntryState = { successKey: 0, error: "" };
 const EMPTY_PLAYER: PlayerState = { value: "", text: "" };
-const MIN_AMOUNT = 10000;
+const MIN_AMOUNT = 5000;
 const AMOUNT_STEP = 5000;
-const PLAYER_NAME_CACHE_KEY = "bmtman-score-player-names";
 const GROUP_PRIORITY = { fixed: 0, former_fixed: 1, walkin: 2 };
 const GROUP_LABEL = {
   fixed: "Cá»‘ Ä‘á»‹nh",
@@ -80,41 +79,6 @@ function matchingSuggestions(query: string, suggestions: ScorePlayerSuggestion[]
       givenName(a.label).localeCompare(givenName(b.label), "vi")
     )
     .slice(0, 8);
-}
-
-function normalizePlayerName(value: string) {
-  return value.trim().replace(/\s+/g, " ");
-}
-
-function readCachedNames() {
-  if (typeof window === "undefined") return [];
-  try {
-    const value = JSON.parse(window.localStorage.getItem(PLAYER_NAME_CACHE_KEY) || "[]");
-    return Array.isArray(value)
-      ? value.filter((name): name is string => typeof name === "string").map(normalizePlayerName).filter(Boolean)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function suggestionsWithCachedNames(suggestions: ScorePlayerSuggestion[]) {
-  const result = [...suggestions];
-  const known = new Set(suggestions.map((item) => normalizeVietnamese(item.label)));
-  for (const name of readCachedNames()) {
-    const key = normalizeVietnamese(name);
-    if (known.has(key)) continue;
-    known.add(key);
-    result.push({ value: `guest:${name}`, label: name, group: "walkin" });
-  }
-  return result;
-}
-
-function cachePlayerNames(names: string[]) {
-  if (typeof window === "undefined") return;
-  const merged = [...readCachedNames(), ...names.map(normalizePlayerName).filter(Boolean)];
-  const unique = Array.from(new Map(merged.map((name) => [normalizeVietnamese(name), name])).values()).slice(-100);
-  window.localStorage.setItem(PLAYER_NAME_CACHE_KEY, JSON.stringify(unique));
 }
 
 function PlayerInput({
@@ -230,11 +194,7 @@ function ScoreEntryForm({
   const canSubmit = !disabled && !pending && loserIsValid && !recipientIsSame && amount >= MIN_AMOUNT;
 
   return (
-    <form
-      className="score-entry-card"
-      action={formAction}
-      onSubmit={() => cachePlayerNames([loser.text, recipient.text])}
-    >
+    <form className="score-entry-card" action={formAction}>
       <input type="hidden" name="date" value={date} />
       {initialEntry && <input type="hidden" name="set_id" value={initialEntry.id} />}
       <input type="hidden" name="amount" value={amount} />
@@ -326,7 +286,7 @@ function ScoreEntryForm({
 
 export function ScoreEntryCard(props: Props) {
   const [state, formAction, pending] = useActionState(confirmScoreEntryAction, INITIAL_STATE);
-  return <ScoreEntryForm key={state.successKey} {...props} suggestions={suggestionsWithCachedNames(props.suggestions)} formAction={formAction} pending={pending} error={state.error} />;
+  return <ScoreEntryForm key={state.successKey} {...props} formAction={formAction} pending={pending} error={state.error} />;
 }
 
 function ScoreHistoryEditForm({
@@ -379,7 +339,6 @@ export function ScoreHistoryEditor({
   disabled: boolean;
 }) {
   const [editing, setEditing] = useState(false);
-  const cachedSuggestions = suggestionsWithCachedNames(suggestions);
 
   return (
     <div className={editing ? "score-history-item editing" : "score-history-item"}>
@@ -409,7 +368,7 @@ export function ScoreHistoryEditor({
       {editing && (
         <ScoreHistoryEditForm
           date={date}
-          suggestions={cachedSuggestions}
+          suggestions={suggestions}
           entry={entry}
           onCancel={() => setEditing(false)}
           onSaved={() => setEditing(false)}
