@@ -282,12 +282,6 @@ export function resolveMemberFeeCollectionStatus(
   return "planned";
 }
 
-type ActiveMemberRow = {
-  member_id: number;
-  status: "fixed" | "former_fixed";
-  members: Member | Member[];
-};
-
 type AmountPaidRow = {
   amount_paid: number | null;
 };
@@ -508,64 +502,9 @@ export const getMembers = cache(async function getMembers() {
   return (data || []) as Member[];
 });
 
-export const getNamedWalkinNames = cache(async function getNamedWalkinNames() {
-  if (!hasServerSupabaseConfig) return [] as string[];
-  const supabase = getSupabaseAdmin();
-  const { data: people, error: peopleError } = await supabase
-    .from("walkin_people")
-    .select("display_name")
-    .order("display_name", { ascending: true });
-
-  if (!peopleError) {
-    return (people || []).map((row) => row.display_name).filter(Boolean) as string[];
-  }
-  if (peopleError.code !== "PGRST205" && peopleError.code !== "42P01") {
-    throw peopleError;
-  }
-
-  const { data: walkins, error: walkinsError } = await supabase
-    .from("session_walkins")
-    .select("walkin_name")
-    .not("walkin_name", "is", null);
-  if (walkinsError) throw walkinsError;
-
-  const names = new Map<string, string>();
-  for (const row of walkins || []) {
-    const name = row.walkin_name?.trim().replace(/\s+/g, " ");
-    if (name) names.set(name.toLocaleLowerCase("vi"), name);
-  }
-  return Array.from(names.values()).sort((a, b) => a.localeCompare(b, "vi"));
-});
-
-export const getActiveMembers = cache(async function getActiveMembers(date: string) {
-  if (!hasServerSupabaseConfig) return [];
-  const { data, error } = await getSupabaseAdmin()
-    .from("member_status_periods")
-    .select("member_id,status,members(member_id,name,joined_date,note)")
-    .lte("start_date", date)
-    .or(`end_date.is.null,end_date.gte.${date}`)
-    .order("status", { ascending: true });
-  if (error) throw error;
-
-  return ((data || []) as ActiveMemberRow[]).map((row) => ({
-    member_id: row.member_id,
-    status: row.status,
-    member: Array.isArray(row.members) ? row.members[0] : row.members,
-  }));
-});
-
-export const getMemberStatus = cache(async function getMemberStatus(memberId: number, date: string) {
-  const { data, error } = await getSupabaseAdmin()
-    .from("member_status_periods")
-    .select("status")
-    .eq("member_id", memberId)
-    .lte("start_date", date)
-    .or(`end_date.is.null,end_date.gte.${date}`)
-    .order("start_date", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.status as "fixed" | "former_fixed" | undefined;
+export const getActiveMembers = cache(async function getActiveMembers() {
+  const members = await getMembers();
+  return members.map((member) => ({ member_id: member.member_id, status: "fixed" as const, member }));
 });
 
 export async function getSessionByDate(date: string) {
@@ -579,7 +518,7 @@ export async function getSessionByDate(date: string) {
   return data as Session | null;
 }
 
-export async function getSessionParticipants(sessionId: number, date: string) {
+export async function getSessionParticipants(sessionId: number) {
   const { data, error } = await getSupabaseAdmin()
     .from("session_stake_points")
     .select("*,members(member_id,name,joined_date,note)")
@@ -587,13 +526,7 @@ export async function getSessionParticipants(sessionId: number, date: string) {
     .order("id", { ascending: true });
   if (error) throw error;
 
-  const rows = (data || []) as SessionParticipant[];
-  return Promise.all(
-    rows.map(async (row) => ({
-      ...row,
-      status: await getMemberStatus(row.member_id, date),
-    }))
-  );
+  return (data || []) as SessionParticipant[];
 }
 
 export async function getSessionWalkins(sessionId: number) {
@@ -1098,7 +1031,7 @@ export async function getMonthSummary(month: string) {
 export async function getMonthlyMemberCards(month: string) {
   if (!hasServerSupabaseConfig) return [] as MonthlyMemberCard[];
 
-  const activeMembers = await getActiveMembers(monthEndDate(month));
+  const activeMembers = await getActiveMembers();
   const supabase = getSupabaseAdmin();
   const [chargesResult, stakePointsResult] = await Promise.all([
     supabase
@@ -1375,12 +1308,6 @@ export const getFeeAmount = cache(async function getFeeAmount(
 export function nextMonth(month: string) {
   const [year, rawMonth] = month.split("-").map(Number);
   const d = new Date(Date.UTC(year, rawMonth, 1));
-  return d.toISOString().slice(0, 10);
-}
-
-function monthEndDate(month: string) {
-  const [year, rawMonth] = month.split("-").map(Number);
-  const d = new Date(Date.UTC(year, rawMonth, 0));
   return d.toISOString().slice(0, 10);
 }
 
