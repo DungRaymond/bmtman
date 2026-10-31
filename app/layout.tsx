@@ -4,9 +4,6 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Ghi độ cầu lông",
   description: "Ghi và thống kê tiền độ cầu lông",
-  icons: {
-    icon: "/logo.svg",
-  },
 };
 
 export default function RootLayout({
