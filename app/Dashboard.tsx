@@ -327,7 +327,7 @@ export function Dashboard({
                       event.preventDefault();
                     }
                   }}>
-                  <span className="loss-count">{count}</span><strong>{member.name}</strong>{loss?.paid_count ? <small>{`Đã thu ${loss.paid_count}/${loss.locked_count}`}</small> : loss?.locked_count ? <small>{`Đã chốt ${loss.locked_count}`}</small> : null}
+                  <span className="loss-count">{count}</span><strong>{member.name.replace(/\s+/, "\n")}</strong>{loss?.paid_count ? <small>{`Đã thu ${loss.paid_count}/${loss.locked_count}`}</small> : loss?.locked_count ? <small>{`Đã chốt ${loss.locked_count}`}</small> : null}
                 </button>
               </form>
               {loss?.locked_count && loss.paid_count === 0 ? <form action={deleteLockedLossAction} className="tile-delete">
