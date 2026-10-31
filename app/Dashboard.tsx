@@ -45,6 +45,8 @@ export function Dashboard({
   const [pigConfirmMemberId, setPigConfirmMemberId] = useState<number | null>(null);
   const [pigConfirmCount, setPigConfirmCount] = useState(0);
   const [holdProgressMemberId, setHoldProgressMemberId] = useState<number | null>(null);
+  const [tapFeedbackMemberId, setTapFeedbackMemberId] = useState<number | null>(null);
+  const tapFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdGateTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const holdSyncs = useRef(new Map<number, Promise<boolean>>());
   const [pigCloseError, setPigCloseError] = useState("");
@@ -179,6 +181,9 @@ export function Dashboard({
     lossSyncTimer.current = setTimeout(() => { void flushLossChanges(); }, 2700);
     const memberId = Number(formData.get("member_id"));
     const delta = Number(formData.get("delta"));
+    setTapFeedbackMemberId(memberId);
+    if (tapFeedbackTimer.current) clearTimeout(tapFeedbackTimer.current);
+    tapFeedbackTimer.current = setTimeout(() => setTapFeedbackMemberId(null), 220);
     const current = lossState.current.find((loss) => loss.member_id === memberId);
     const optimistic = current
       ? lossState.current.map((loss) => loss.member_id === memberId ? { ...loss, loss_count: loss.loss_count + delta } : loss)
@@ -316,8 +321,12 @@ export function Dashboard({
             return <div className={`member-tile${editing ? " is-editing" : ""}`} key={member.member_id}>
               <form id={formId} onSubmit={handleLossChange}>
                 <input type="hidden" name="date" value={date} /><input type="hidden" name="member_id" value={member.member_id} /><input type="hidden" name="delta" value={editing ? -1 : 1} />
-                <button className={`member-tap${holdProgressMemberId === member.member_id ? " is-holding" : ""}`} type="submit" disabled={!authorized || syncingLosses || (editing && !canRemove)}
-                  onPointerDown={() => !editing && count > 0 && holdStart(member.member_id, count)}
+                <button className={`member-tap${holdProgressMemberId === member.member_id ? " is-holding" : ""}${tapFeedbackMemberId === member.member_id ? " tap-feedback" : ""}`} type="submit" disabled={!authorized || syncingLosses || (editing && !canRemove)}
+                  onPointerDown={(event) => {
+                    if (!editing && count > 0) holdStart(member.member_id, count);
+                    else if (!editing) held.current.delete(member.member_id);
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                  }}
                   onPointerUp={() => holdEnd(member.member_id)} onPointerLeave={() => holdEnd(member.member_id)} onPointerCancel={() => holdEnd(member.member_id)}
                   onContextMenu={(event) => event.preventDefault()}
                   onClick={(event) => {
