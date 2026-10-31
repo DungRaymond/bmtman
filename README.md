@@ -32,7 +32,7 @@ Mở http://localhost:3000.
 
 ## Supabase và deploy
 
-Schema dashboard nằm trong `supabase-dashboard.sql`.
+Schema dashboard nằm trong `supabase-dashboard.sql`. Chạy thêm `supabase-dashboard-monthly-totals.sql` để tạo cache tổng thu/chi dashboard.
 
 Khi deploy Vercel, cấu hình các biến môi trường:
 

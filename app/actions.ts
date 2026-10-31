@@ -38,8 +38,8 @@ export async function changeLossAction(formData: FormData) {
   const memberId = integer(value(formData, "member_id"), "Thành viên");
   const delta = integer(value(formData, "delta"), "Thao tác", -1, 1);
   if (delta !== 1 && delta !== -1) throw new Error("Thao tác không hợp lệ.");
-  await rpc<number>("dashboard_change_loss", { p_date: date, p_member_id: memberId, p_delta: delta });
-  revalidatePath("/");
+  const count = await rpc<number>("dashboard_change_loss", { p_date: date, p_member_id: memberId, p_delta: delta });
+  return { memberId, count };
 }
 
 export async function lockLossesAction(formData: FormData) {
