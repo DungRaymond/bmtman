@@ -44,6 +44,9 @@ export function Dashboard({
   const [syncingLosses, setSyncingLosses] = useState(false);
   const [pigConfirmMemberId, setPigConfirmMemberId] = useState<number | null>(null);
   const [pigConfirmCount, setPigConfirmCount] = useState(0);
+  const [holdProgressMemberId, setHoldProgressMemberId] = useState<number | null>(null);
+  const holdGateTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const holdSyncs = useRef(new Map<number, Promise<boolean>>());
   const [pigCloseError, setPigCloseError] = useState("");
   const lossState = useRef(losses);
   const lossVersion = useRef(0);
@@ -192,19 +195,52 @@ export function Dashboard({
   const pigWidth = shown.pig / maxBar * 100;
   const expenseWidth = shown.expense / maxBar * 100;
 
-  function holdStart(memberId: number, _name: string, count: number) {
+  function holdStart(memberId: number, count: number) {
     held.current.delete(memberId);
-    if (!count) return;
-    timers.current.set(memberId, setTimeout(() => {
-      held.current.add(memberId);
-      setPigConfirmMemberId(memberId);
-      setPigConfirmCount(count);
-    }, 650));
+    if (!count || editing || syncingLosses) return;
+    const gate = setTimeout(() => {
+      holdGateTimers.current.delete(memberId);
+      setHoldProgressMemberId(memberId);
+      timers.current.set(memberId, setTimeout(() => {
+        timers.current.delete(memberId);
+        held.current.add(memberId);
+        setHoldProgressMemberId(null);
+        const sync = syncBeforePigConfirm();
+        holdSyncs.current.set(memberId, sync);
+        void sync.then((success) => {
+          holdSyncs.current.delete(memberId);
+          if (!success) return;
+          const latestCount = lossState.current.find((loss) => loss.member_id === memberId)?.loss_count || 0;
+          if (!latestCount) return;
+          setPigConfirmMemberId(memberId);
+          setPigConfirmCount(latestCount);
+        });
+      }, 1100));
+    }, 300);
+    holdGateTimers.current.set(memberId, gate);
   }
 
   function holdEnd(memberId: number) {
+    const gate = holdGateTimers.current.get(memberId);
+    if (gate) {
+      clearTimeout(gate);
+      holdGateTimers.current.delete(memberId);
+      return;
+    }
     const timer = timers.current.get(memberId);
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      clearTimeout(timer);
+      timers.current.delete(memberId);
+      setHoldProgressMemberId((current) => current === memberId ? null : current);
+    }
+  }
+
+  function syncBeforePigConfirm(): Promise<boolean> {
+    if (lossSyncTimer.current) {
+      clearTimeout(lossSyncTimer.current);
+      lossSyncTimer.current = null;
+    }
+    return pendingLossChanges.current.length ? flushLossChanges() : Promise.resolve(true);
   }
 
   return (
@@ -252,7 +288,6 @@ export function Dashboard({
             setEditing(!editing);
           }}>{editing ? "Xong sửa" : "Sửa"}</button>
         </div>
-        <p className="gesture-hint">Chạm để {editing ? "giảm 1 lượt" : "cộng 1 lượt"} · Nhấn giữ thành viên để chốt lượt vào quỹ nuôi lợn</p>
         {lossSyncError && <p role="alert" className="sync-error">Lưu lượt thất bại. Số hiển thị chưa được lưu.</p>}
         {syncingLosses && <div className="sync-overlay" role="status" aria-live="polite"><div className="sync-pig"><span>₫</span><i /></div><strong>Đang đồng bộ lượt…</strong></div>}
         {pigConfirmMemberId !== null && (() => {
@@ -276,17 +311,22 @@ export function Dashboard({
           {members.map((member) => {
             const loss = lossesByMember.get(member.member_id);
             const count = loss?.loss_count || 0;
-            const unpaid = Math.max(0, (loss?.locked_count || 0) - (loss?.paid_count || 0));
             const canRemove = count > (loss?.locked_count || 0);
             const formId = `tap-${member.member_id}`;
             return <div className={`member-tile${editing ? " is-editing" : ""}`} key={member.member_id}>
               <form id={formId} onSubmit={handleLossChange}>
                 <input type="hidden" name="date" value={date} /><input type="hidden" name="member_id" value={member.member_id} /><input type="hidden" name="delta" value={editing ? -1 : 1} />
-                <button className="member-tap" type="submit" disabled={!authorized || syncingLosses || (editing && !canRemove)}
-                  onPointerDown={() => !editing && count > 0 && holdStart(member.member_id, member.name, count)}
+                <button className={`member-tap${holdProgressMemberId === member.member_id ? " is-holding" : ""}`} type="submit" disabled={!authorized || syncingLosses || (editing && !canRemove)}
+                  onPointerDown={() => !editing && count > 0 && holdStart(member.member_id, count)}
                   onPointerUp={() => holdEnd(member.member_id)} onPointerLeave={() => holdEnd(member.member_id)} onPointerCancel={() => holdEnd(member.member_id)}
                   onContextMenu={(event) => event.preventDefault()}
-                  onClick={(event) => { holdEnd(member.member_id); if (held.current.has(member.member_id)) { held.current.delete(member.member_id); event.preventDefault(); } }}>
+                  onClick={(event) => {
+                    holdEnd(member.member_id);
+                    if (held.current.has(member.member_id)) {
+                      held.current.delete(member.member_id);
+                      event.preventDefault();
+                    }
+                  }}>
                   <span className="loss-count">{count}</span><strong>{member.name}</strong>{loss?.paid_count ? <small>{`Đã thu ${loss.paid_count}/${loss.locked_count}`}</small> : loss?.locked_count ? <small>{`Đã chốt ${loss.locked_count}`}</small> : null}
                 </button>
               </form>
