@@ -66,6 +66,16 @@ export async function recordPigPaymentAction(formData: FormData) {
   revalidatePath("/");
 }
 
+export async function closePigAction(formData: FormData) {
+  await assertDashboardAccess();
+  const amount = await rpc<number>("dashboard_close_pig", {
+    p_date: dateValue(value(formData, "date")),
+    p_member_id: integer(value(formData, "member_id"), "Thành viên"),
+  });
+  revalidatePath("/");
+  return amount;
+}
+
 export async function addExpenseAction(formData: FormData) {
   await assertDashboardAccess();
   const expenseDate = dateValue(value(formData, "expense_date"));

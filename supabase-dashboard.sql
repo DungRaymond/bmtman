@@ -117,15 +117,36 @@ begin
 end;
 $$;
 
+create or replace function public.dashboard_close_pig(p_date date, p_member_id bigint)
+returns integer language plpgsql security definer set search_path = public as $$
+declare current_row public.daily_member_losses%rowtype;
+        new_amount integer;
+begin
+  if p_date is null or p_member_id is null then raise exception 'invalid pig close'; end if;
+  select * into current_row from daily_member_losses
+    where loss_date = p_date and member_id = p_member_id for update;
+  if not found or current_row.loss_count = 0 then raise exception 'no losses to close'; end if;
+  if current_row.paid_count > 0 then raise exception 'losses already partially paid'; end if;
+  new_amount := current_row.loss_count * 10000;
+  insert into pig_ledger(paid_date, member_id, loss_count, amount)
+    values (p_date, p_member_id, current_row.loss_count, new_amount);
+  delete from daily_member_losses where loss_date = p_date and member_id = p_member_id;
+  return new_amount;
+end;
+$$;
+
 revoke all on function public.dashboard_change_loss(date, bigint, integer) from public, anon, authenticated;
 revoke all on function public.dashboard_lock_losses(date) from public, anon, authenticated;
 revoke all on function public.dashboard_delete_locked_loss(date, bigint) from public, anon, authenticated;
 revoke all on function public.dashboard_record_pig_payment(date, bigint) from public, anon, authenticated;
+revoke all on function public.dashboard_close_pig(date, bigint) from public, anon, authenticated;
 grant execute on function public.dashboard_change_loss(date, bigint, integer) to postgres;
 grant execute on function public.dashboard_lock_losses(date) to postgres;
 grant execute on function public.dashboard_delete_locked_loss(date, bigint) to postgres;
 grant execute on function public.dashboard_record_pig_payment(date, bigint) to postgres;
+grant execute on function public.dashboard_close_pig(date, bigint) to postgres;
 grant execute on function public.dashboard_change_loss(date, bigint, integer) to service_role;
 grant execute on function public.dashboard_lock_losses(date) to service_role;
 grant execute on function public.dashboard_delete_locked_loss(date, bigint) to service_role;
 grant execute on function public.dashboard_record_pig_payment(date, bigint) to service_role;
+grant execute on function public.dashboard_close_pig(date, bigint) to service_role;

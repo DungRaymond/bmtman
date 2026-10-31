@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   addExpenseAction,
   changeLossAction,
+  closePigAction,
   deleteLockedLossAction,
   loginDashboardAction,
   lockLossesAction,
-  recordPigPaymentAction,
 } from "@/app/actions";
 
 type Member = { member_id: number; name: string };
@@ -41,6 +41,10 @@ export function Dashboard({
   const [editing, setEditing] = useState(false);
   const [visibleLosses, setVisibleLosses] = useState(losses);
   const [lossSyncError, setLossSyncError] = useState(false);
+  const [syncingLosses, setSyncingLosses] = useState(false);
+  const [pigConfirmMemberId, setPigConfirmMemberId] = useState<number | null>(null);
+  const [pigConfirmCount, setPigConfirmCount] = useState(0);
+  const [pigCloseError, setPigCloseError] = useState("");
   const lossState = useRef(losses);
   const lossVersion = useRef(0);
   const lossQueue = useRef(Promise.resolve());
@@ -98,10 +102,11 @@ export function Dashboard({
     return () => { active = false; };
   }, [date, lossCacheKey]);
   const lossesByMember = new Map(visibleLosses.map((loss) => [loss.member_id, loss]));
-  async function flushLossChanges() {
+  async function flushLossChanges(): Promise<boolean> {
     const changes = pendingLossChanges.current.splice(0);
-    if (!changes.length) return;
-    lossQueue.current = lossQueue.current.then(async () => {
+    if (!changes.length) return true;
+    setSyncingLosses(true);
+    const sync = lossQueue.current.then(async () => {
       try {
         for (const formData of changes) await changeLossAction(formData);
         const response = await fetch(`/api/dashboard-losses?date=${date}`, { cache: "no-store" });
@@ -112,13 +117,59 @@ export function Dashboard({
         setVisibleLosses(fresh);
         try { localStorage.setItem(lossCacheKey, JSON.stringify(fresh)); } catch {}
         setLossSyncError(false);
+        return true;
       } catch {
         setLossSyncError(true);
+        return false;
+      } finally {
+        setSyncingLosses(false);
       }
     });
+    lossQueue.current = sync.then(() => undefined);
+    return sync;
+  }
+  async function closePig(member: Member, count: number): Promise<boolean> {
+    if (!count) return false;
+    if (pendingLossChanges.current.length) {
+      if (lossSyncTimer.current) clearTimeout(lossSyncTimer.current);
+      lossSyncTimer.current = null;
+      if (!(await flushLossChanges())) return false;
+    }
+    setSyncingLosses(true);
+    setLossSyncError(false);
+    setPigCloseError("");
+    const formData = new FormData();
+    formData.set("date", date);
+    formData.set("member_id", String(member.member_id));
+    try {
+      await closePigAction(formData);
+      const response = await fetch(`/api/dashboard-losses?date=${date}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Losses unavailable");
+      const fresh = await response.json() as Loss[];
+      lossState.current = fresh;
+      lossVersion.current = 0;
+      setVisibleLosses(fresh);
+      try { localStorage.setItem(lossCacheKey, JSON.stringify(fresh)); } catch {}
+      const totalsResponse = await fetch(`/api/dashboard-totals?month=${selectedMonth}`, { cache: "no-store" });
+      if (!totalsResponse.ok) throw new Error("Totals unavailable");
+      const freshTotals = await totalsResponse.json() as ChartTotals;
+      setTotals(freshTotals);
+      try {
+        const cache = JSON.parse(localStorage.getItem("dashboard-monthly-totals") || "{}") as Record<string, ChartTotals>;
+        cache[selectedMonth] = freshTotals;
+        localStorage.setItem("dashboard-monthly-totals", JSON.stringify(cache));
+      } catch {}
+      return true;
+    } catch (error) {
+      setPigCloseError(error instanceof Error ? error.message : "Không chốt được lượt vào quỹ nuôi lợn.");
+      return false;
+    } finally {
+      setSyncingLosses(false);
+    }
   }
   function handleLossChange(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (syncingLosses) return;
     const formData = new FormData(event.currentTarget);
     pendingLossChanges.current.push(formData);
     if (lossSyncTimer.current) clearTimeout(lossSyncTimer.current);
@@ -141,15 +192,13 @@ export function Dashboard({
   const pigWidth = shown.pig / maxBar * 100;
   const expenseWidth = shown.expense / maxBar * 100;
 
-  function holdStart(memberId: number, name: string, count: number) {
+  function holdStart(memberId: number, _name: string, count: number) {
     held.current.delete(memberId);
     if (!count) return;
     timers.current.set(memberId, setTimeout(() => {
       held.current.add(memberId);
-      if (window.confirm(`Xác nhận đã thu ${money((count - (lossesByMember.get(memberId)?.paid_count || 0)) * 10000)} từ ${name}?`)) {
-        const form = document.getElementById(`pay-${memberId}`) as HTMLFormElement | null;
-        form?.requestSubmit();
-      }
+      setPigConfirmMemberId(memberId);
+      setPigConfirmCount(count);
     }, 650));
   }
 
@@ -194,10 +243,35 @@ export function Dashboard({
       <section className="dashboard-panel loss-panel">
         <div className="dashboard-heading">
           <div><p className="eyebrow">{date}</p><h2>Lượt thua hôm nay</h2></div>
-          <button className={editing ? "edit-button active" : "edit-button"} type="button" onClick={() => setEditing(!editing)}>{editing ? "Xong sửa" : "Sửa"}</button>
+          <button className={editing ? "edit-button active" : "edit-button"} type="button" disabled={syncingLosses} onClick={async () => {
+            if (pendingLossChanges.current.length) {
+              if (lossSyncTimer.current) clearTimeout(lossSyncTimer.current);
+              lossSyncTimer.current = null;
+              if (!(await flushLossChanges())) return;
+            }
+            setEditing(!editing);
+          }}>{editing ? "Xong sửa" : "Sửa"}</button>
         </div>
-        <p className="gesture-hint">Chạm để {editing ? "giảm 1 lượt" : "cộng 1 lượt"} · Nhấn giữ để xác nhận thu</p>
+        <p className="gesture-hint">Chạm để {editing ? "giảm 1 lượt" : "cộng 1 lượt"} · Nhấn giữ thành viên để chốt lượt vào quỹ nuôi lợn</p>
         {lossSyncError && <p role="alert" className="sync-error">Lưu lượt thất bại. Số hiển thị chưa được lưu.</p>}
+        {syncingLosses && <div className="sync-overlay" role="status" aria-live="polite"><div className="sync-pig"><span>₫</span><i /></div><strong>Đang đồng bộ lượt…</strong></div>}
+        {pigConfirmMemberId !== null && (() => {
+          const member = members.find((item) => item.member_id === pigConfirmMemberId);
+          if (!member || !pigConfirmCount) return null;
+          return <div className="login-overlay"><section className="login-card" role="dialog" aria-modal="true" aria-labelledby="pig-confirm-title">
+            <p className="eyebrow">QUỸ NUÔI LỢN</p><h2 id="pig-confirm-title">Chốt lượt của {member.name}?</h2>
+            <p>{pigConfirmCount} lượt × 10.000đ = {money(pigConfirmCount * 10000)}. Lượt của riêng {member.name} sẽ về 0.</p>
+            {pigCloseError && <p role="alert" className="sync-error">{pigCloseError}</p>}
+            <button className="primary-button" type="button" disabled={syncingLosses} onClick={() => {
+              setSyncingLosses(true);
+              setPigCloseError("");
+              void closePig(member, pigConfirmCount).then((success) => {
+                if (success) setPigConfirmMemberId(null);
+              });
+            }}>Xác nhận chốt</button>
+            <button className="secondary-button" type="button" onClick={() => setPigConfirmMemberId(null)}>Hủy</button>
+          </section></div>;
+        })()}
         <div className="member-grid">
           {members.map((member) => {
             const loss = lossesByMember.get(member.member_id);
@@ -208,15 +282,14 @@ export function Dashboard({
             return <div className={`member-tile${editing ? " is-editing" : ""}`} key={member.member_id}>
               <form id={formId} onSubmit={handleLossChange}>
                 <input type="hidden" name="date" value={date} /><input type="hidden" name="member_id" value={member.member_id} /><input type="hidden" name="delta" value={editing ? -1 : 1} />
-                <button className="member-tap" type="submit" disabled={!authorized || (editing && !canRemove)}
-                  onPointerDown={() => !editing && unpaid > 0 && holdStart(member.member_id, member.name, loss?.locked_count || 0)}
+                <button className="member-tap" type="submit" disabled={!authorized || syncingLosses || (editing && !canRemove)}
+                  onPointerDown={() => !editing && count > 0 && holdStart(member.member_id, member.name, count)}
                   onPointerUp={() => holdEnd(member.member_id)} onPointerLeave={() => holdEnd(member.member_id)} onPointerCancel={() => holdEnd(member.member_id)}
                   onContextMenu={(event) => event.preventDefault()}
                   onClick={(event) => { holdEnd(member.member_id); if (held.current.has(member.member_id)) { held.current.delete(member.member_id); event.preventDefault(); } }}>
                   <span className="loss-count">{count}</span><strong>{member.name}</strong>{loss?.paid_count ? <small>{`Đã thu ${loss.paid_count}/${loss.locked_count}`}</small> : loss?.locked_count ? <small>{`Đã chốt ${loss.locked_count}`}</small> : null}
                 </button>
               </form>
-              {unpaid > 0 && <form id={`pay-${member.member_id}`} action={recordPigPaymentAction}><input type="hidden" name="date" value={date} /><input type="hidden" name="member_id" value={member.member_id} /></form>}
               {loss?.locked_count && loss.paid_count === 0 ? <form action={deleteLockedLossAction} className="tile-delete">
                 <input type="hidden" name="date" value={date} /><input type="hidden" name="member_id" value={member.member_id} />
                 <button type="submit" disabled={!authorized} aria-label={`Xóa lượt đã chốt của ${member.name}`} title="Xóa lượt đã chốt">×</button>

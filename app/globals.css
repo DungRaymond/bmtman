@@ -48,6 +48,15 @@ input { min-width: 0; border: 1px solid var(--line); background: #121922; color:
 .expense-form .primary-button { padding: 0 12px; }
 .gesture-hint { margin: 8px 0 14px; color: var(--muted); font-size: 12px; }
 .sync-error { margin: 8px 0; color: var(--red); font-size: 13px; }
+.sync-overlay { position: fixed; inset: 0; z-index: 5; display: grid; align-content: center; justify-items: center; gap: 18px; background: #080c12cc; backdrop-filter: blur(5px); color: var(--text); }
+.sync-overlay strong { font-size: 15px; }
+.sync-pig { position: relative; width: 112px; height: 86px; border: 3px solid #a85b00; border-radius: 48% 48% 42% 42%; background: linear-gradient(140deg,#fff18a,#ffbd16 38%,#f59b00 72%,#d87500); box-shadow: inset 7px 6px 10px #fff8a866, 0 10px 30px #0007; animation: pig-breathe .8s ease-in-out infinite alternate; }
+.sync-pig::before { content: ""; position: absolute; left: -15px; top: 34px; width: 30px; height: 23px; border: 2px solid #a85b00; border-radius: 50%; background: linear-gradient(140deg,#ffe76a,#ffad08); }
+.sync-pig::after { content: ""; position: absolute; left: 53px; top: -8px; width: 34px; height: 5px; border-radius: 4px; background: #8f4d00; transform: rotate(-8deg); }
+.sync-pig > span { position: absolute; z-index: 1; top: 18px; left: 37px; color: #39230b; font-size: 17px; }
+.sync-pig > i { position: absolute; right: 16px; bottom: -7px; width: 19px; height: 15px; border-radius: 5px 5px 9px 9px; background: #e98d00; box-shadow: -53px 0 #e98d00; }
+@keyframes pig-breathe { to { transform: scale(1.04); } }
+@media (prefers-reduced-motion: reduce) { .sync-pig { animation: none; } }
 .member-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .member-tile { position: relative; min-width: 0; }
 .member-tile form:first-child { height: 100%; }

@@ -34,13 +34,24 @@ returns trigger language plpgsql security definer set search_path = public as $$
 declare old_month date;
         new_month date;
 begin
-  if tg_op <> 'INSERT' then
-    old_month := date_trunc('month', case when tg_table_name = 'dashboard_expenses' then old.expense_date else old.paid_date end)::date;
-    perform refresh_dashboard_month_totals(old_month);
-  end if;
-  if tg_op <> 'DELETE' then
-    new_month := date_trunc('month', case when tg_table_name = 'dashboard_expenses' then new.expense_date else new.paid_date end)::date;
-    perform refresh_dashboard_month_totals(new_month);
+  if tg_table_name = 'dashboard_expenses' then
+    if tg_op <> 'INSERT' then
+      old_month := date_trunc('month', old.expense_date)::date;
+      perform refresh_dashboard_month_totals(old_month);
+    end if;
+    if tg_op <> 'DELETE' then
+      new_month := date_trunc('month', new.expense_date)::date;
+      perform refresh_dashboard_month_totals(new_month);
+    end if;
+  else
+    if tg_op <> 'INSERT' then
+      old_month := date_trunc('month', old.paid_date)::date;
+      perform refresh_dashboard_month_totals(old_month);
+    end if;
+    if tg_op <> 'DELETE' then
+      new_month := date_trunc('month', new.paid_date)::date;
+      perform refresh_dashboard_month_totals(new_month);
+    end if;
   end if;
   return null;
 end;
@@ -63,6 +74,10 @@ begin
 end;
 $$;
 
+drop trigger if exists fund_contributions_month_totals on public.fund_contributions;
+drop trigger if exists pig_ledger_month_totals on public.pig_ledger;
+drop trigger if exists dashboard_expenses_month_totals on public.dashboard_expenses;
+
 create trigger fund_contributions_month_totals
   after insert or update or delete on public.fund_contributions
   for each row execute function public.update_dashboard_month_totals();
@@ -75,6 +90,26 @@ create trigger dashboard_expenses_month_totals
 
 select public.backfill_dashboard_month_totals();
 drop function public.backfill_dashboard_month_totals();
+
+create or replace function public.dashboard_close_pig(p_date date, p_member_id bigint)
+returns integer language plpgsql security definer set search_path = public as $$
+declare current_row public.daily_member_losses%rowtype;
+        new_amount integer;
+begin
+  if p_date is null or p_member_id is null then raise exception 'invalid pig close'; end if;
+  select * into current_row from daily_member_losses
+    where loss_date = p_date and member_id = p_member_id for update;
+  if not found or current_row.loss_count = 0 then raise exception 'no losses to close'; end if;
+  if current_row.paid_count > 0 then raise exception 'losses already partially paid'; end if;
+  new_amount := current_row.loss_count * 10000;
+  insert into pig_ledger(paid_date, member_id, loss_count, amount)
+    values (p_date, p_member_id, current_row.loss_count, new_amount);
+  delete from daily_member_losses where loss_date = p_date and member_id = p_member_id;
+  return new_amount;
+end;
+$$;
+revoke all on function public.dashboard_close_pig(date, bigint) from public, anon, authenticated;
+grant execute on function public.dashboard_close_pig(date, bigint) to postgres, service_role;
 
 alter table public.dashboard_monthly_totals enable row level security;
 revoke all on public.dashboard_monthly_totals from public, anon, authenticated;
