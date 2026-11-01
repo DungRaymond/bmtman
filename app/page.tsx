@@ -36,11 +36,12 @@ export default async function Home({ searchParams }: Props) {
     return <main><div className="config-warning">Thiếu cấu hình SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY.</div></main>;
   }
   const supabase = getSupabaseAdmin();
-  const [lossResult, totalsResult] = await Promise.all([
+  const [lossResult, totalsResult, pigResult] = await Promise.all([
     supabase.from("daily_member_losses").select("member_id,loss_count,locked_count,paid_count").eq("loss_date", date),
     supabase.from("dashboard_monthly_totals").select("month,member_fund,pig,expense").lte("month", `${month}-01`).order("month", { ascending: true }),
+    supabase.from("pig_ledger").select("member_id,amount"),
   ]);
-  for (const result of [lossResult, totalsResult]) if (result.error) {
+  for (const result of [lossResult, totalsResult, pigResult]) if (result.error) {
     throw new Error(`Dashboard schema missing or query failed: ${result.error.message}`);
   }
 
@@ -51,6 +52,10 @@ export default async function Home({ searchParams }: Props) {
   }), { memberFund: 0, pig: 0, expense: 0 });
   const selected = (totalsResult.data || []).find((row) => row.month === `${month}-01`) as MonthlyTotalRow | undefined;
   const monthly = selected ? { memberFund: Number(selected.member_fund), pig: Number(selected.pig), expense: Number(selected.expense) } : { memberFund: 0, pig: 0, expense: 0 };
+  const pigTotals: Record<number, number> = {};
+  for (const row of pigResult.data || []) {
+    pigTotals[row.member_id] = (pigTotals[row.member_id] || 0) + Number(row.amount);
+  }
 
   return <Dashboard
     date={date}
@@ -58,6 +63,7 @@ export default async function Home({ searchParams }: Props) {
     view={view}
     members={members.map(({ member_id, name }) => ({ member_id, name }))}
     losses={(lossResult.data || []) as LossRow[]}
+    pigTotals={pigTotals}
     chart={{ total, monthly }}
     authorized={authorized}
   />;

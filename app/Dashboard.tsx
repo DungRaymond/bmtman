@@ -16,6 +16,11 @@ type Totals = { memberFund: number; pig: number; expense: number };
 type ChartTotals = { total: Totals; monthly: Totals };
 
 const money = (amount: number) => `${new Intl.NumberFormat("vi-VN").format(amount)}đ`;
+const compactMoney = (amount: number) => amount >= 1_000_000
+  ? `${(amount / 1_000_000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })}tr`
+  : amount >= 1_000
+    ? `${Math.round(amount / 1_000)}k`
+    : `${amount}đ`;
 
 function PendingButton({ children, className }: { children: React.ReactNode; className: string }) {
   return <button className={className} type="submit">{children}</button>;
@@ -27,6 +32,7 @@ export function Dashboard({
   view,
   members,
   losses,
+  pigTotals: initialPigTotals,
   chart,
   authorized,
 }: {
@@ -35,6 +41,7 @@ export function Dashboard({
   view: "total" | "monthly";
   members: Member[];
   losses: Loss[];
+  pigTotals: Record<number, number>;
   chart: ChartTotals;
   authorized: boolean;
 }) {
@@ -59,6 +66,8 @@ export function Dashboard({
   const pendingLossChanges = useRef<FormData[]>([]);
   const lossSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lossCacheKey = `dashboard-losses:${date}`;
+  const pigTotalsCacheKey = "dashboard-pig-totals";
+  const [pigTotals, setPigTotals] = useState<Record<number, number>>(initialPigTotals);
   const [selectedMonth, setSelectedMonth] = useState(month);
   const [selectedView, setSelectedView] = useState(view);
   const [totals, setTotals] = useState<ChartTotals>(chart);
@@ -109,6 +118,23 @@ export function Dashboard({
       }).catch(() => {});
     return () => { active = false; };
   }, [date, lossCacheKey]);
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      try {
+        const cached = localStorage.getItem(pigTotalsCacheKey);
+        if (active && cached) setPigTotals(JSON.parse(cached) as Record<number, number>);
+      } catch {}
+    });
+    fetch("/api/dashboard-pig-totals", { cache: "no-store" })
+      .then((response) => { if (!response.ok) throw new Error("Pig totals unavailable"); return response.json() as Promise<Record<number, number>>; })
+      .then((fresh) => {
+        if (!active) return;
+        setPigTotals(fresh);
+        try { localStorage.setItem(pigTotalsCacheKey, JSON.stringify(fresh)); } catch {}
+      }).catch(() => {});
+    return () => { active = false; };
+  }, [pigTotalsCacheKey]);
   const lossesByMember = new Map(visibleLosses.map((loss) => [loss.member_id, loss]));
   async function refreshLosses() {
     const response = await fetch(`/api/dashboard-losses?date=${date}`, { cache: "no-store" });
@@ -209,7 +235,10 @@ export function Dashboard({
     formData.set("date", date);
     formData.set("member_id", String(member.member_id));
     try {
-      await closePigAction(formData);
+      const amount = Number(await closePigAction(formData)) || 0;
+      const nextPigTotals = { ...pigTotals, [member.member_id]: (pigTotals[member.member_id] || 0) + amount };
+      setPigTotals(nextPigTotals);
+      try { localStorage.setItem(pigTotalsCacheKey, JSON.stringify(nextPigTotals)); } catch {}
       const response = await fetch(`/api/dashboard-losses?date=${date}`, { cache: "no-store" });
       if (!response.ok) throw new Error("Losses unavailable");
       const fresh = await response.json() as Loss[];
@@ -225,6 +254,14 @@ export function Dashboard({
         const cache = JSON.parse(localStorage.getItem("dashboard-monthly-totals") || "{}") as Record<string, ChartTotals>;
         cache[selectedMonth] = freshTotals;
         localStorage.setItem("dashboard-monthly-totals", JSON.stringify(cache));
+      } catch {}
+      try {
+        const pigResponse = await fetch("/api/dashboard-pig-totals", { cache: "no-store" });
+        if (pigResponse.ok) {
+          const freshPigTotals = await pigResponse.json() as Record<number, number>;
+          setPigTotals(freshPigTotals);
+          localStorage.setItem(pigTotalsCacheKey, JSON.stringify(freshPigTotals));
+        }
       } catch {}
       return true;
     } catch (error) {
@@ -402,6 +439,7 @@ export function Dashboard({
             const count = loss?.loss_count || 0;
             const locked = loss?.locked_count || 0;
             const paid = loss?.paid_count || 0;
+            const pigTotal = pigTotals[member.member_id] || 0;
             const canRemove = count > locked;
             const canReset = locked > 0 && paid === 0;
             const formId = `tap-${member.member_id}`;
@@ -425,8 +463,12 @@ export function Dashboard({
                     }
                   }}>
                   <span className="loss-count">{count}</span>
-                  {locked > 0 && <span className="locked-count" aria-label={`Đã chốt ${locked} lượt`} title={`Đã chốt ${locked} lượt`}>{locked}</span>}
-                  <strong>{member.name.replace(/\s+/, "\n")}</strong>{paid ? <small>{`Đã thu ${paid}/${locked}`}</small> : null}
+                  {paid ? <small className="paid-count">{`Đã thu ${paid}/${locked}`}</small> : null}
+                  <strong>{member.name.replace(/\s+/, "\n")}</strong>
+                  <div className="tile-badges">
+                    {locked > 0 && <span className="locked-count" aria-label={`Đã chốt ${locked} lượt`} title={`Đã chốt ${locked} lượt`}><b>{locked}</b> đã chốt</span>}
+                    {pigTotal > 0 && <span className="pig-total" aria-label={`Đã đút ${money(pigTotal)} vào quỹ nuôi lợn`} title={`Đã đút ${money(pigTotal)} vào quỹ nuôi lợn`}><b>{compactMoney(pigTotal)}</b> đã đút</span>}
+                  </div>
                 </button>
               </form>
             </div>;

@@ -1,5 +1,13 @@
 # Nhật ký thay đổi
 
+## 2026-11-01 — Badge "đã chốt" và "đã đút" trong ô thành viên
+
+- Chuyển badge "đã chốt" xuống góc trái dưới, thêm chú thích "đã chốt" bên cạnh số.
+- Thêm badge "đã đút" ở góc phải dưới: cộng dồn tổng tiền mỗi lần xác nhận nộp vào quỹ nuôi lợn, hiện dạng gọn (`70k`, `1,2tr`).
+- Số tiền "đã đút" lấy từ `pig_ledger` (API `/api/dashboard-pig-totals`), có cache localStorage để hiện ngay khi mở trang.
+- Chuyển dòng "Đã thu x/y" lên góc trái trên cho khỏi đè badge dưới.
+- Xác minh `npm run lint` và `npm run build` thành công.
+
 ## 2026-11-01 — Chốt lượt tức thì và hoàn tác lượt đã chốt
 
 - Nút "Chốt lượt thua hôm nay" cập nhật số đã chốt ngay từ cache rồi mới đồng bộ DB, không còn chờ server action.
