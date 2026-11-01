@@ -1,5 +1,14 @@
 # Nhật ký thay đổi
 
+## 2026-11-01 — Chốt lượt tức thì và hoàn tác lượt đã chốt
+
+- Nút "Chốt lượt thua hôm nay" cập nhật số đã chốt ngay từ cache rồi mới đồng bộ DB, không còn chờ server action.
+- Thay nút × ở góc trái ô thành viên bằng badge tím hiển thị số lượt đã chốt.
+- Hoàn tác lượt đã chốt bằng nhấn giữ ô thành viên trong mode "Sửa": xóa lượt đã chốt, không thu tiền, không ghi quỹ nuôi lợn; chỉ áp dụng khi chưa thu.
+- Chặn giảm lượt thua xuống dưới số lượt đã chốt khi chạm trong mode "Sửa".
+- Bỏ dòng "Đã chốt N" dưới tên vì đã có badge; chỉ còn "Đã thu x/y" khi đã thu tiền.
+- Xác minh `npm run lint` và `npm run build` thành công.
+
 ## 2026-11-01 — Sửa nhấn giữ và khôi phục hiệu ứng tap
 
 - Đồng bộ thay đổi từ máy khác (`c4357a6`): API tổng hợp tháng, API lượt thua, icon mới.
