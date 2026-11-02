@@ -12,6 +12,7 @@ import {
 
 type Member = { member_id: number; name: string };
 type Loss = { member_id: number; loss_count: number; locked_count: number; paid_count: number };
+type UnpaidLoss = { member_id: number; loss_count: number; locked_count: number; paid_count: number };
 type Totals = { memberFund: number; pig: number; expense: number };
 type ChartTotals = { total: Totals; monthly: Totals };
 
@@ -47,6 +48,7 @@ export function Dashboard({
 }) {
   const [editing, setEditing] = useState(false);
   const [visibleLosses, setVisibleLosses] = useState(losses);
+  const [unpaidLosses, setUnpaidLosses] = useState<UnpaidLoss[]>([]);
   const [lossSyncError, setLossSyncError] = useState(false);
   const [syncingLosses, setSyncingLosses] = useState(false);
   const [pigConfirmMemberId, setPigConfirmMemberId] = useState<number | null>(null);
@@ -66,6 +68,7 @@ export function Dashboard({
   const pendingLossChanges = useRef<FormData[]>([]);
   const lossSyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lossCacheKey = `dashboard-losses:${date}`;
+  const unpaidLossesCacheKey = "dashboard-unpaid-losses";
   const pigTotalsCacheKey = "dashboard-pig-totals";
   const [pigTotals, setPigTotals] = useState<Record<number, number>>(initialPigTotals);
   const [selectedMonth, setSelectedMonth] = useState(month);
@@ -118,6 +121,24 @@ export function Dashboard({
       }).catch(() => {});
     return () => { active = false; };
   }, [date, lossCacheKey]);
+  const lossesByMember = new Map(visibleLosses.map((loss) => [loss.member_id, loss]));
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      try {
+        const cached = localStorage.getItem(unpaidLossesCacheKey);
+        if (active && cached) setUnpaidLosses(JSON.parse(cached) as UnpaidLoss[]);
+      } catch {}
+    });
+    fetch("/api/dashboard-unpaid-losses", { cache: "no-store" })
+      .then((response) => { if (!response.ok) throw new Error("Unpaid losses unavailable"); return response.json() as Promise<UnpaidLoss[]>; })
+      .then((fresh) => {
+        if (!active) return;
+        setUnpaidLosses(fresh);
+        try { localStorage.setItem(unpaidLossesCacheKey, JSON.stringify(fresh)); } catch {}
+      }).catch(() => {});
+    return () => { active = false; };
+  }, [unpaidLossesCacheKey]);
   useEffect(() => {
     let active = true;
     Promise.resolve().then(() => {
@@ -135,7 +156,14 @@ export function Dashboard({
       }).catch(() => {});
     return () => { active = false; };
   }, [pigTotalsCacheKey]);
-  const lossesByMember = new Map(visibleLosses.map((loss) => [loss.member_id, loss]));
+  async function refreshUnpaidLosses() {
+    const response = await fetch("/api/dashboard-unpaid-losses", { cache: "no-store" });
+    if (!response.ok) throw new Error("Unpaid losses unavailable");
+    const fresh = await response.json() as UnpaidLoss[];
+    setUnpaidLosses(fresh);
+    try { localStorage.setItem(unpaidLossesCacheKey, JSON.stringify(fresh)); } catch {}
+  }
+  const unpaidByMember = new Map(unpaidLosses.map((item) => [item.member_id, item]));
   async function refreshLosses() {
     const response = await fetch(`/api/dashboard-losses?date=${date}`, { cache: "no-store" });
     if (!response.ok) throw new Error("Losses unavailable");
@@ -163,6 +191,7 @@ export function Dashboard({
         setLossSyncError(true);
         return false;
       } finally {
+        try { await refreshUnpaidLosses(); } catch {}
         setSyncingLosses(false);
       }
     });
@@ -188,10 +217,12 @@ export function Dashboard({
         formData.set("date", date);
         await lockLossesAction(formData);
         await refreshLosses();
+        await refreshUnpaidLosses();
         return true;
       } catch {
         setLossSyncError(true);
         try { await refreshLosses(); } catch {}
+        try { await refreshUnpaidLosses(); } catch {}
         return false;
       }
     });
@@ -210,6 +241,7 @@ export function Dashboard({
         formData.set("member_id", String(member.member_id));
         await deleteLockedLossAction(formData);
         await refreshLosses();
+        await refreshUnpaidLosses();
         return true;
       } catch (error) {
         setResetError(error instanceof Error ? error.message : "Không xóa được lượt đã chốt.");
@@ -246,6 +278,7 @@ export function Dashboard({
       lossVersion.current = 0;
       setVisibleLosses(fresh);
       try { localStorage.setItem(lossCacheKey, JSON.stringify(fresh)); } catch {}
+      await refreshUnpaidLosses();
       const totalsResponse = await fetch(`/api/dashboard-totals?month=${selectedMonth}`, { cache: "no-store" });
       if (!totalsResponse.ok) throw new Error("Totals unavailable");
       const freshTotals = await totalsResponse.json() as ChartTotals;
@@ -291,6 +324,16 @@ export function Dashboard({
     lossState.current = optimistic;
     lossVersion.current++;
     setVisibleLosses(optimistic);
+    setUnpaidLosses((currentItems) => {
+      const currentItem = currentItems.find((item) => item.member_id === memberId);
+      const updated = currentItem
+        ? currentItems.map((item) => item.member_id === memberId
+          ? { ...item, loss_count: Math.max(0, item.loss_count + delta) }
+          : item)
+        : [...currentItems, { member_id: memberId, loss_count: Math.max(0, delta), locked_count: 0, paid_count: 0 }];
+      try { localStorage.setItem(unpaidLossesCacheKey, JSON.stringify(updated)); } catch {}
+      return updated;
+    });
     try { localStorage.setItem(lossCacheKey, JSON.stringify(optimistic)); } catch {}
     setLossSyncError(false);
   }
@@ -436,11 +479,14 @@ export function Dashboard({
         <div className="member-grid">
           {members.map((member) => {
             const loss = lossesByMember.get(member.member_id);
-            const count = loss?.loss_count || 0;
-            const locked = loss?.locked_count || 0;
-            const paid = loss?.paid_count || 0;
+            const memberUnpaid = unpaidByMember.get(member.member_id);
+            const count = memberUnpaid?.loss_count || 0;
+            const locked = memberUnpaid?.locked_count || 0;
+            const paid = memberUnpaid?.paid_count || 0;
+            const todayCount = loss?.loss_count || 0;
+            const unpaidLocked = Math.max(0, locked - paid);
             const pigTotal = pigTotals[member.member_id] || 0;
-            const canRemove = count > locked;
+            const canRemove = todayCount > locked;
             const canReset = locked > 0 && paid === 0;
             const formId = `tap-${member.member_id}`;
             return <div className={`member-tile${editing ? " is-editing" : ""}`} key={member.member_id}>
@@ -448,7 +494,7 @@ export function Dashboard({
                 <input type="hidden" name="date" value={date} /><input type="hidden" name="member_id" value={member.member_id} /><input type="hidden" name="delta" value={editing ? -1 : 1} />
                 <button className={`member-tap${holdProgressMemberId === member.member_id ? " is-holding" : ""}${tapFeedbackMemberId === member.member_id ? " tap-feedback" : ""}`} type="submit" disabled={!authorized || syncingLosses || (editing && !canRemove && !canReset)}
                   onPointerDown={(event) => {
-                    if (!editing && count > 0) holdStart(member.member_id, count, "pig");
+                    if (!editing && todayCount > 0) holdStart(member.member_id, todayCount, "pig");
                     else if (editing && canReset) holdStart(member.member_id, locked, "reset");
                     else held.current.delete(member.member_id);
                     event.currentTarget.setPointerCapture(event.pointerId);
@@ -466,7 +512,7 @@ export function Dashboard({
                   {paid ? <small className="paid-count">{`Đã thu ${paid}/${locked}`}</small> : null}
                   <strong>{member.name.replace(/\s+/, "\n")}</strong>
                   <div className="tile-badges">
-                    {locked > 0 && <span className="locked-count" aria-label={`Đã chốt ${locked} lượt`} title={`Đã chốt ${locked} lượt`}><b>{locked}</b> đã chốt</span>}
+                    {unpaidLocked > 0 && <span className="locked-count" aria-label={`${unpaidLocked} lượt chưa đút lợn`} title={`${unpaidLocked} lượt chưa đút lợn`}><b>{unpaidLocked}</b> chưa đút</span>}
                     {pigTotal > 0 && <span className="pig-total" aria-label={`Đã đút ${money(pigTotal)} vào quỹ nuôi lợn`} title={`Đã đút ${money(pigTotal)} vào quỹ nuôi lợn`}><b>{compactMoney(pigTotal)}</b> đã đút</span>}
                   </div>
                 </button>
