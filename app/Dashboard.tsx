@@ -444,70 +444,8 @@ export function Dashboard({
 
   return (
     <main className="dashboard">
-      <section className="dashboard-panel chart-panel">
-        <div className="dashboard-heading">
-          <div><p className="eyebrow">QUỸ NUÔI LỢN</p><h1>Thu & chi</h1></div>
-          <form onSubmit={(event) => { event.preventDefault(); const value = new FormData(event.currentTarget).get("month"); if (typeof value === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(value)) setSelectedMonth(value); }}><input aria-label="Tháng" type="month" name="month" defaultValue={month} /><button className="secondary-button">Xem</button></form>
-        </div>
-        <nav className="chart-view-switch" aria-label="Kiểu tổng hợp">
-          <button type="button" className={selectedView === "total" ? "active" : ""} onClick={() => setSelectedView("total")}>Tổng đến tháng</button>
-          <button type="button" className={selectedView === "monthly" ? "active" : ""} onClick={() => setSelectedView("monthly")}>Theo tháng</button>
-        </nav>
-        <div className="bar-chart" role="img" aria-label={`${selectedView === "total" ? "Tổng đến hết" : "Tháng"} ${selectedMonth}: quỹ thành viên ${money(shown.memberFund)}, quỹ nuôi lợn ${money(shown.pig)}, chi ${money(shown.expense)}`}>
-          <div className="fund-chart-row">
-            <div className="fund-chart-label"><span>Quỹ thành viên + nuôi lợn</span><strong>{money(shown.memberFund + shown.pig)}</strong></div>
-            <div className="horizontal-bar stacked-bar">
-              <i className="bar-member-fund" style={{ width: `${memberFundWidth}%` }} title={`Quỹ thành viên ${money(shown.memberFund)}`} />
-              <i className="bar-pig" style={{ width: `${pigWidth}%` }} title={`Quỹ nuôi lợn ${money(shown.pig)}`} />
-            </div>
-            <div className="chart-breakdown"><span><i className="legend-member-fund" />Quỹ thành viên {money(shown.memberFund)}</span><span><i className="legend-pig" />Nuôi lợn {money(shown.pig)}</span></div>
-          </div>
-          <div className="fund-chart-row">
-            <div className="fund-chart-label"><span>Chi</span><strong>{money(shown.expense)}</strong></div>
-            <div className="horizontal-bar"><i className="bar-expense" style={{ width: `${expenseWidth}%` }} /></div>
-          </div>
-        </div>
-        <form className="expense-form" onSubmit={async (event) => {
-          event.preventDefault();
-          if (expensePending) return;
-          const form = event.currentTarget;
-          const formData = new FormData(form);
-          setExpensePending(true);
-          setExpenseError("");
-          try {
-            await new Promise<void>((resolve, reject) => requirePin(async () => {
-              try {
-                const result = await addExpenseAction(formData);
-                if (!result.ok) { reject(new Error(result.error || "Không ghi được khoản chi.")); void syncAccess(); } else resolve();
-              } catch { reject(new Error("Không ghi được khoản chi.")); void syncAccess(); }
-            }, () => reject(new Error("Cần nhập PIN để thêm khoản chi."))));
-            const response = await fetch(`/api/dashboard-totals?month=${selectedMonth}`, { cache: "no-store" });
-            if (!response.ok) throw new Error("Không đồng bộ được tổng quỹ.");
-            const fresh = await response.json() as ChartTotals;
-            setTotals(fresh);
-            try {
-              const cache = JSON.parse(localStorage.getItem("dashboard-monthly-totals") || "{}") as Record<string, ChartTotals>;
-              cache[selectedMonth] = fresh;
-              localStorage.setItem("dashboard-monthly-totals", JSON.stringify(cache));
-            } catch {}
-            form.reset();
-          } catch (error) {
-            setExpenseError(error instanceof Error ? error.message : "Không ghi được khoản chi.");
-          } finally {
-            setExpensePending(false);
-          }
-        }}>
-          <input type="hidden" name="expense_date" value={date} />
-          <label><span>Khoản chi</span><input required name="description" maxLength={160} placeholder="Nội dung" /></label>
-          <label><span>Số tiền</span><input required name="amount" type="text" inputMode="numeric" pattern="[0-9]+" maxLength={15} placeholder="VND" /></label>
-          <PendingButton className="primary-button" disabled={expensePending}>{expensePending ? "Đang lưu…" : "Thêm chi"}</PendingButton>
-        </form>
-        {expenseError && <p role="alert" className="sync-error">{expenseError}</p>}
-      </section>
-
       <section className="dashboard-panel loss-panel">
-        <div className="dashboard-heading">
-          <div><p className="eyebrow">{date}</p><h2>Lượt thua hôm nay</h2></div>
+        <div className="dashboard-heading loss-heading">
           <button className={editing ? "edit-button active" : "edit-button"} type="button" disabled={syncingLosses} onClick={async () => {
             if (editing && !hasAccess) {
               requirePin(async () => {
@@ -613,6 +551,67 @@ export function Dashboard({
           })}
         </div>
         <div className="lock-form"><button className="primary-button lock-button" type="button" disabled={syncingLosses} onClick={() => requirePin(() => lockToday())}>Chốt lượt thua hôm nay</button></div>
+      </section>
+
+      <section className="dashboard-panel chart-panel">
+        <div className="dashboard-heading">
+          <div><p className="eyebrow">QUỸ NUÔI LỢN</p><h1>Thu & chi</h1></div>
+          <form onSubmit={(event) => { event.preventDefault(); const value = new FormData(event.currentTarget).get("month"); if (typeof value === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(value)) setSelectedMonth(value); }}><input aria-label="Tháng" type="month" name="month" defaultValue={month} /><button className="secondary-button">Xem</button></form>
+        </div>
+        <nav className="chart-view-switch" aria-label="Kiểu tổng hợp">
+          <button type="button" className={selectedView === "total" ? "active" : ""} onClick={() => setSelectedView("total")}>Tổng đến tháng</button>
+          <button type="button" className={selectedView === "monthly" ? "active" : ""} onClick={() => setSelectedView("monthly")}>Theo tháng</button>
+        </nav>
+        <div className="bar-chart" role="img" aria-label={`${selectedView === "total" ? "Tổng đến hết" : "Tháng"} ${selectedMonth}: quỹ thành viên ${money(shown.memberFund)}, quỹ nuôi lợn ${money(shown.pig)}, chi ${money(shown.expense)}`}>
+          <div className="fund-chart-row">
+            <div className="fund-chart-label"><span>Quỹ thành viên + nuôi lợn</span><strong>{money(shown.memberFund + shown.pig)}</strong></div>
+            <div className="horizontal-bar stacked-bar">
+              <i className="bar-member-fund" style={{ width: `${memberFundWidth}%` }} title={`Quỹ thành viên ${money(shown.memberFund)}`} />
+              <i className="bar-pig" style={{ width: `${pigWidth}%` }} title={`Quỹ nuôi lợn ${money(shown.pig)}`} />
+            </div>
+            <div className="chart-breakdown"><span><i className="legend-member-fund" />Quỹ thành viên {money(shown.memberFund)}</span><span><i className="legend-pig" />Nuôi lợn {money(shown.pig)}</span></div>
+          </div>
+          <div className="fund-chart-row">
+            <div className="fund-chart-label"><span>Chi</span><strong>{money(shown.expense)}</strong></div>
+            <div className="horizontal-bar"><i className="bar-expense" style={{ width: `${expenseWidth}%` }} /></div>
+          </div>
+        </div>
+        <form className="expense-form" onSubmit={async (event) => {
+          event.preventDefault();
+          if (expensePending) return;
+          const form = event.currentTarget;
+          const formData = new FormData(form);
+          setExpensePending(true);
+          setExpenseError("");
+          try {
+            await new Promise<void>((resolve, reject) => requirePin(async () => {
+              try {
+                const result = await addExpenseAction(formData);
+                if (!result.ok) { reject(new Error(result.error || "Không ghi được khoản chi.")); void syncAccess(); } else resolve();
+              } catch { reject(new Error("Không ghi được khoản chi.")); void syncAccess(); }
+            }, () => reject(new Error("Cần nhập PIN để thêm khoản chi."))));
+            const response = await fetch(`/api/dashboard-totals?month=${selectedMonth}`, { cache: "no-store" });
+            if (!response.ok) throw new Error("Không đồng bộ được tổng quỹ.");
+            const fresh = await response.json() as ChartTotals;
+            setTotals(fresh);
+            try {
+              const cache = JSON.parse(localStorage.getItem("dashboard-monthly-totals") || "{}") as Record<string, ChartTotals>;
+              cache[selectedMonth] = fresh;
+              localStorage.setItem("dashboard-monthly-totals", JSON.stringify(cache));
+            } catch {}
+            form.reset();
+          } catch (error) {
+            setExpenseError(error instanceof Error ? error.message : "Không ghi được khoản chi.");
+          } finally {
+            setExpensePending(false);
+          }
+        }}>
+          <input type="hidden" name="expense_date" value={date} />
+          <label><span>Khoản chi</span><input required name="description" maxLength={160} placeholder="Nội dung" /></label>
+          <label><span>Số tiền</span><input required name="amount" type="text" inputMode="numeric" pattern="[0-9]+" maxLength={15} placeholder="VND" /></label>
+          <PendingButton className="primary-button" disabled={expensePending}>{expensePending ? "Đang lưu…" : "Thêm chi"}</PendingButton>
+        </form>
+        {expenseError && <p role="alert" className="sync-error">{expenseError}</p>}
       </section>
 
       {pinPrompt && <div className="login-overlay"><form className="login-card" action={submitPin}>

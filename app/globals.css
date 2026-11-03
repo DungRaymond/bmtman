@@ -17,6 +17,7 @@ button { cursor: pointer; }
 .dashboard-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 18px; }
 .dashboard-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .dashboard-heading h1, .dashboard-heading h2 { margin: 2px 0 0; font-size: 22px; letter-spacing: -.02em; }
+.loss-heading { justify-content: flex-end; }
 .eyebrow { margin: 0; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
 .dashboard-heading form { display: flex; gap: 7px; }
 input { min-width: 0; border: 1px solid var(--line); background: #121922; color: var(--text); border-radius: 10px; padding: 10px 11px; }
