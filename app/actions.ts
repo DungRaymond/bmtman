@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { assertDashboardAccess, setDashboardAccess } from "@/lib/dashboardAuth";
+import { assertDashboardAccess, hasDashboardAccess, setDashboardAccess } from "@/lib/dashboardAuth";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 
 function value(formData: FormData, key: string) {
@@ -27,9 +27,17 @@ async function rpc<T>(name: string, args: Record<string, unknown>) {
   return data as T;
 }
 
-export async function loginDashboardAction(formData: FormData) {
-  await setDashboardAccess(value(formData, "pin"));
-  revalidatePath("/");
+export async function loginDashboardAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await setDashboardAccess(value(formData, "pin"));
+  } catch {
+    return { ok: false, error: "Mã PIN không đúng." };
+  }
+  return { ok: true };
+}
+
+export async function checkDashboardAccessAction() {
+  return hasDashboardAccess();
 }
 
 export async function changeLossAction(formData: FormData) {
@@ -76,17 +84,24 @@ export async function closePigAction(formData: FormData) {
   return amount;
 }
 
-export async function addExpenseAction(formData: FormData) {
-  await assertDashboardAccess();
-  const expenseDate = dateValue(value(formData, "expense_date"));
-  const amount = integer(value(formData, "amount").replace(/[,.\s]/g, ""), "Số tiền");
+export async function addExpenseAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  if (!(await hasDashboardAccess())) return { ok: false, error: "Cần nhập mã PIN quản lý." };
+  let expenseDate: string;
+  let amount: number;
+  try {
+    expenseDate = dateValue(value(formData, "expense_date"));
+    amount = integer(value(formData, "amount").replace(/[,.\s]/g, ""), "Số tiền");
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Dữ liệu không hợp lệ." };
+  }
   const description = value(formData, "description").slice(0, 160);
-  if (!description) throw new Error("Nhập nội dung khoản chi.");
+  if (!description) return { ok: false, error: "Nhập nội dung khoản chi." };
   const { error } = await getSupabaseAdmin().from("dashboard_expenses").insert({
     expense_date: expenseDate,
     amount,
     description,
   });
-  if (error) throw new Error(error.message);
+  if (error) return { ok: false, error: "Không ghi được khoản chi." };
   revalidatePath("/");
+  return { ok: true };
 }

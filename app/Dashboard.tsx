@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   addExpenseAction,
   changeLossAction,
+  checkDashboardAccessAction,
   closePigAction,
   deleteLockedLossAction,
   loginDashboardAction,
@@ -51,21 +52,39 @@ export function Dashboard({
   const [pinPrompt, setPinPrompt] = useState(false);
   const [pinError, setPinError] = useState("");
   const [pendingPinAction, setPendingPinAction] = useState<(() => void | Promise<void>) | null>(null);
-  function requirePin(action: () => void | Promise<void>) {
+  const [pendingPinCancel, setPendingPinCancel] = useState<(() => void) | null>(null);
+  function requirePin(action: () => void | Promise<void>, onCancel?: () => void) {
     if (hasAccess) void action();
-    else { setPendingPinAction(() => action); setPinError(""); setPinPrompt(true); }
+    else {
+      setPendingPinAction(() => action);
+      setPendingPinCancel(() => onCancel ?? null);
+      setPinError("");
+      setPinPrompt(true);
+    }
+  }
+  function cancelPin() {
+    pendingPinCancel?.();
+    setPendingPinAction(null);
+    setPendingPinCancel(null);
+    setPinPrompt(false);
+  }
+  async function syncAccess() {
+    try { if (!(await checkDashboardAccessAction())) setHasAccess(false); } catch {}
   }
   async function submitPin(formData: FormData) {
     try {
-      await loginDashboardAction(formData);
-      setHasAccess(true);
-      setPinPrompt(false);
-      const action = pendingPinAction;
-      setPendingPinAction(null);
-      await action?.();
-    } catch (error) {
-      setPinError(error instanceof Error ? error.message : "Không xác thực được PIN.");
+      const result = await loginDashboardAction(formData);
+      if (!result.ok) { setPinError(result.error || "Mã PIN không đúng."); return; }
+    } catch {
+      setPinError("Không xác thực được PIN.");
+      return;
     }
+    setHasAccess(true);
+    setPinPrompt(false);
+    const action = pendingPinAction;
+    setPendingPinAction(null);
+    setPendingPinCancel(null);
+    await action?.();
   }
   const [visibleLosses, setVisibleLosses] = useState(losses);
   const [unpaidLosses, setUnpaidLosses] = useState<UnpaidLoss[]>([]);
@@ -211,6 +230,7 @@ export function Dashboard({
         return true;
       } catch {
         setLossSyncError(true);
+        void syncAccess();
         return false;
       } finally {
         try { await refreshUnpaidLosses(); } catch {}
@@ -242,6 +262,7 @@ export function Dashboard({
         return true;
       } catch {
         setLossSyncError(true);
+        void syncAccess();
         try { await refreshLosses(); } catch {}
         try { await refreshUnpaidLosses(); } catch {}
         return false;
@@ -266,6 +287,7 @@ export function Dashboard({
         return true;
       } catch (error) {
         setResetError(error instanceof Error ? error.message : "Không xóa được lượt đã chốt.");
+        void syncAccess();
         return false;
       } finally {
         setSyncingLosses(false);
@@ -320,6 +342,7 @@ export function Dashboard({
       return true;
     } catch (error) {
       setPigCloseError(error instanceof Error ? error.message : "Không chốt được lượt vào quỹ nuôi lợn.");
+      void syncAccess();
       return false;
     } finally {
       setSyncingLosses(false);
@@ -444,13 +467,20 @@ export function Dashboard({
             <div className="horizontal-bar"><i className="bar-expense" style={{ width: `${expenseWidth}%` }} /></div>
           </div>
         </div>
-        <form className="expense-form" action={async (formData) => {
+        <form className="expense-form" onSubmit={async (event) => {
+          event.preventDefault();
+          if (expensePending) return;
+          const form = event.currentTarget;
+          const formData = new FormData(form);
           setExpensePending(true);
           setExpenseError("");
           try {
             await new Promise<void>((resolve, reject) => requirePin(async () => {
-              try { await addExpenseAction(formData); resolve(); } catch (error) { reject(error); }
-            }));
+              try {
+                const result = await addExpenseAction(formData);
+                if (!result.ok) { reject(new Error(result.error || "Không ghi được khoản chi.")); void syncAccess(); } else resolve();
+              } catch { reject(new Error("Không ghi được khoản chi.")); void syncAccess(); }
+            }, () => reject(new Error("Cần nhập PIN để thêm khoản chi."))));
             const response = await fetch(`/api/dashboard-totals?month=${selectedMonth}`, { cache: "no-store" });
             if (!response.ok) throw new Error("Không đồng bộ được tổng quỹ.");
             const fresh = await response.json() as ChartTotals;
@@ -460,7 +490,7 @@ export function Dashboard({
               cache[selectedMonth] = fresh;
               localStorage.setItem("dashboard-monthly-totals", JSON.stringify(cache));
             } catch {}
-            (document.querySelector(".expense-form") as HTMLFormElement | null)?.reset();
+            form.reset();
           } catch (error) {
             setExpenseError(error instanceof Error ? error.message : "Không ghi được khoản chi.");
           } finally {
@@ -590,7 +620,7 @@ export function Dashboard({
         {pinError && <p role="alert" className="sync-error">{pinError}</p>}
         <input name="pin" type="password" autoComplete="current-password" placeholder="PIN" required autoFocus />
         <button className="primary-button">Xác nhận</button>
-        <button className="secondary-button" type="button" onClick={() => { setPendingPinAction(null); setPinPrompt(false); }}>Hủy</button>
+        <button className="secondary-button" type="button" onClick={cancelPin}>Hủy</button>
       </form></div>}
     </main>
   );
