@@ -23,8 +23,8 @@ const compactMoney = (amount: number) => amount >= 1_000_000
     ? `${Math.round(amount / 1_000)}k`
     : `${amount}đ`;
 
-function PendingButton({ children, className }: { children: React.ReactNode; className: string }) {
-  return <button className={className} type="submit">{children}</button>;
+function PendingButton({ children, className, disabled }: { children: React.ReactNode; className: string; disabled?: boolean }) {
+  return <button className={className} type="submit" disabled={disabled}>{children}</button>;
 }
 
 export function Dashboard({
@@ -74,6 +74,8 @@ export function Dashboard({
   const [selectedMonth, setSelectedMonth] = useState(month);
   const [selectedView, setSelectedView] = useState(view);
   const [totals, setTotals] = useState<ChartTotals>(chart);
+  const [expenseError, setExpenseError] = useState("");
+  const [expensePending, setExpensePending] = useState(false);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const held = useRef(new Set<number>());
   useEffect(() => {
@@ -84,7 +86,7 @@ export function Dashboard({
         if (active && cache[selectedMonth]) setTotals(cache[selectedMonth]);
       } catch {}
     });
-    fetch(`/api/dashboard-totals?month=${selectedMonth}`, { cache: "no-store" })
+    fetch(`/api/dashboard-totals?month=${selectedMonth}&_=${Date.now()}`, { cache: "no-store" })
       .then((response) => { if (!response.ok) throw new Error("Totals unavailable"); return response.json() as Promise<ChartTotals>; })
       .then((fresh) => {
         if (!active) return;
@@ -422,12 +424,33 @@ export function Dashboard({
             <div className="horizontal-bar"><i className="bar-expense" style={{ width: `${expenseWidth}%` }} /></div>
           </div>
         </div>
-        <form className="expense-form" action={addExpenseAction}>
+        <form className="expense-form" action={async (formData) => {
+          setExpensePending(true);
+          setExpenseError("");
+          try {
+            await addExpenseAction(formData);
+            const response = await fetch(`/api/dashboard-totals?month=${selectedMonth}`, { cache: "no-store" });
+            if (!response.ok) throw new Error("Không đồng bộ được tổng quỹ.");
+            const fresh = await response.json() as ChartTotals;
+            setTotals(fresh);
+            try {
+              const cache = JSON.parse(localStorage.getItem("dashboard-monthly-totals") || "{}") as Record<string, ChartTotals>;
+              cache[selectedMonth] = fresh;
+              localStorage.setItem("dashboard-monthly-totals", JSON.stringify(cache));
+            } catch {}
+            (document.querySelector(".expense-form") as HTMLFormElement | null)?.reset();
+          } catch (error) {
+            setExpenseError(error instanceof Error ? error.message : "Không ghi được khoản chi.");
+          } finally {
+            setExpensePending(false);
+          }
+        }}>
           <input type="hidden" name="expense_date" value={date} />
           <label><span>Khoản chi</span><input required name="description" maxLength={160} placeholder="Nội dung" /></label>
-          <label><span>Số tiền</span><input required name="amount" type="number" min="1" step="1000" placeholder="VND" /></label>
-          <PendingButton className="primary-button">Thêm chi</PendingButton>
+          <label><span>Số tiền</span><input required name="amount" type="number" min="1" step="1" placeholder="VND" /></label>
+          <PendingButton className="primary-button" disabled={expensePending}>{expensePending ? "Đang lưu…" : "Thêm chi"}</PendingButton>
         </form>
+        {expenseError && <p role="alert" className="sync-error">{expenseError}</p>}
       </section>
 
       <section className="dashboard-panel loss-panel">

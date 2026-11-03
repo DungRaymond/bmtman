@@ -34,28 +34,82 @@ returns trigger language plpgsql security definer set search_path = public as $$
 declare old_month date;
         new_month date;
 begin
-  if tg_table_name = 'dashboard_expenses' then
-    if tg_op <> 'INSERT' then
+  if tg_op <> 'INSERT' then
+    if tg_table_name = 'dashboard_expenses' then
       old_month := date_trunc('month', old.expense_date)::date;
-      perform refresh_dashboard_month_totals(old_month);
-    end if;
-    if tg_op <> 'DELETE' then
-      new_month := date_trunc('month', new.expense_date)::date;
-      perform refresh_dashboard_month_totals(new_month);
-    end if;
-  else
-    if tg_op <> 'INSERT' then
+    else
       old_month := date_trunc('month', old.paid_date)::date;
-      perform refresh_dashboard_month_totals(old_month);
     end if;
-    if tg_op <> 'DELETE' then
+    perform refresh_dashboard_month_totals(old_month);
+  end if;
+  if tg_op <> 'DELETE' then
+    if tg_table_name = 'dashboard_expenses' then
+      new_month := date_trunc('month', new.expense_date)::date;
+    else
       new_month := date_trunc('month', new.paid_date)::date;
+    end if;
+    if old_month is null or new_month <> old_month then
       perform refresh_dashboard_month_totals(new_month);
     end if;
   end if;
   return null;
 end;
 $$;
+
+create or replace function public.refresh_all_dashboard_month_totals()
+returns void language plpgsql security definer set search_path = public as $$
+declare target_month date;
+begin
+  for target_month in
+    select date_trunc('month', source_date)::date
+    from (
+      select paid_date as source_date from fund_contributions
+      union all select paid_date from pig_ledger
+      union all select expense_date from dashboard_expenses
+    ) dates
+    group by 1
+  loop
+    perform refresh_dashboard_month_totals(target_month);
+  end loop;
+end;
+$$;
+revoke all on function public.refresh_all_dashboard_month_totals() from public, anon, authenticated;
+grant execute on function public.refresh_all_dashboard_month_totals() to service_role;
+
+create or replace function public.refresh_monthly_totals_after_statement()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  perform refresh_all_dashboard_month_totals();
+  return null;
+end;
+$$;
+
+drop trigger if exists fund_contributions_month_totals on public.fund_contributions;
+drop trigger if exists pig_ledger_month_totals on public.pig_ledger;
+drop trigger if exists dashboard_expenses_month_totals on public.dashboard_expenses;
+drop trigger if exists fund_contributions_month_totals_statement on public.fund_contributions;
+drop trigger if exists pig_ledger_month_totals_statement on public.pig_ledger;
+drop trigger if exists dashboard_expenses_month_totals_statement on public.dashboard_expenses;
+
+create trigger fund_contributions_month_totals
+  after insert or update or delete on public.fund_contributions
+  for each row execute function public.update_dashboard_month_totals();
+create trigger pig_ledger_month_totals
+  after insert or update or delete on public.pig_ledger
+  for each row execute function public.update_dashboard_month_totals();
+create trigger dashboard_expenses_month_totals
+  after insert or update or delete on public.dashboard_expenses
+  for each row execute function public.update_dashboard_month_totals();
+
+create trigger fund_contributions_month_totals_statement
+  after insert or update or delete on public.fund_contributions
+  for each statement execute function public.refresh_monthly_totals_after_statement();
+create trigger pig_ledger_month_totals_statement
+  after insert or update or delete on public.pig_ledger
+  for each statement execute function public.refresh_monthly_totals_after_statement();
+create trigger dashboard_expenses_month_totals_statement
+  after insert or update or delete on public.dashboard_expenses
+  for each statement execute function public.refresh_monthly_totals_after_statement();
 
 create or replace function public.backfill_dashboard_month_totals()
 returns void language plpgsql security definer set search_path = public as $$
@@ -73,20 +127,6 @@ begin
   end loop;
 end;
 $$;
-
-drop trigger if exists fund_contributions_month_totals on public.fund_contributions;
-drop trigger if exists pig_ledger_month_totals on public.pig_ledger;
-drop trigger if exists dashboard_expenses_month_totals on public.dashboard_expenses;
-
-create trigger fund_contributions_month_totals
-  after insert or update or delete on public.fund_contributions
-  for each row execute function public.update_dashboard_month_totals();
-create trigger pig_ledger_month_totals
-  after insert or update or delete on public.pig_ledger
-  for each row execute function public.update_dashboard_month_totals();
-create trigger dashboard_expenses_month_totals
-  after insert or update or delete on public.dashboard_expenses
-  for each row execute function public.update_dashboard_month_totals();
 
 select public.backfill_dashboard_month_totals();
 drop function public.backfill_dashboard_month_totals();
