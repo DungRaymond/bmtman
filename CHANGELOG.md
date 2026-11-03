@@ -1,5 +1,13 @@
 # Nhật ký thay đổi
 
+## 2026-11-02 — Đồng bộ tài liệu với dashboard hiện tại
+
+- `PROJECT_CONTEXT.md` và `brain.md`: bỏ mô tả các route `/thu`, `/thu/so-thu`, `/chi`, `/tong-hop/*` và file `lib/security.ts`, `lib/thuAuth.ts`, `app/thu/*` đã bị xóa; thay bằng cấu trúc thực tế (một trang `/` + 4 API route `dashboard-*`).
+- Bổ sung tài liệu nghiệp vụ hiện tại: bảng `daily_member_losses`/`pig_ledger`/`dashboard_expenses`/`fund_contributions`/`dashboard_monthly_totals`, các RPC `dashboard_*`, quy tắc nút và nhấn giữ, badge trên ô thành viên, cache `localStorage` và debounce 2700ms, cách auth PIN qua `lib/dashboardAuth.ts`.
+- Ghi rõ phần code kế thừa không còn UI dùng: `lib/finance.ts` (chỉ còn `getMembers()`), `lib/walkinReceivables.ts`, các bảng legacy và `badminton finance schema.md`, `TASKS_FIX_HIGH_RISKS.md`.
+- `README.md`: đổi lệnh sang Yarn, sửa mô tả biểu đồ (theo tháng/tổng đến tháng, không phải theo ngày), thêm danh sách API route và note chạy cả hai file SQL khi cài đặt.
+- Chỉ thay đổi tài liệu; không sửa code, `yarn lint` và `yarn build` vẫn chạy để xác nhận.
+
 ## 2026-11-01 — Badge "đã chốt" và "đã đút" trong ô thành viên
 
 - Chuyển badge "đã chốt" xuống góc trái dưới, thêm chú thích "đã chốt" bên cạnh số.
