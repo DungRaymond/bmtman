@@ -79,7 +79,7 @@ export async function closePigAction(formData: FormData) {
 export async function addExpenseAction(formData: FormData) {
   await assertDashboardAccess();
   const expenseDate = dateValue(value(formData, "expense_date"));
-  const amount = integer(value(formData, "amount"), "Số tiền");
+  const amount = integer(value(formData, "amount").replace(/[,.\s]/g, ""), "Số tiền");
   const description = value(formData, "description").slice(0, 160);
   if (!description) throw new Error("Nhập nội dung khoản chi.");
   const { error } = await getSupabaseAdmin().from("dashboard_expenses").insert({

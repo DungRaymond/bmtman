@@ -447,7 +447,7 @@ export function Dashboard({
         }}>
           <input type="hidden" name="expense_date" value={date} />
           <label><span>Khoản chi</span><input required name="description" maxLength={160} placeholder="Nội dung" /></label>
-          <label><span>Số tiền</span><input required name="amount" type="number" min="1" step="1" placeholder="VND" /></label>
+          <label><span>Số tiền</span><input required name="amount" type="text" inputMode="numeric" pattern="[0-9]+" maxLength={15} placeholder="VND" /></label>
           <PendingButton className="primary-button" disabled={expensePending}>{expensePending ? "Đang lưu…" : "Thêm chi"}</PendingButton>
         </form>
         {expenseError && <p role="alert" className="sync-error">{expenseError}</p>}
