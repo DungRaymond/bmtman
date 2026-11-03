@@ -445,27 +445,6 @@ export function Dashboard({
   return (
     <main className="dashboard">
       <section className="dashboard-panel loss-panel">
-        <div className="dashboard-heading loss-heading">
-          <button className={editing ? "edit-button active" : "edit-button"} type="button" disabled={syncingLosses} onClick={async () => {
-            if (editing && !hasAccess) {
-              requirePin(async () => {
-                if (pendingLossChanges.current.length) {
-                  if (lossSyncTimer.current) clearTimeout(lossSyncTimer.current);
-                  lossSyncTimer.current = null;
-                  if (!(await flushLossChanges())) return;
-                }
-                setEditing(false);
-              });
-              return;
-            }
-            if (pendingLossChanges.current.length) {
-              if (lossSyncTimer.current) clearTimeout(lossSyncTimer.current);
-              lossSyncTimer.current = null;
-              if (!(await flushLossChanges())) return;
-            }
-            setEditing(!editing);
-          }}>{editing ? "Xong sửa" : "Sửa"}</button>
-        </div>
         {lossSyncError && <p role="alert" className="sync-error">Lưu lượt thất bại. Số hiển thị chưa được lưu.</p>}
         {syncingLosses && <div className="sync-overlay" role="status" aria-live="polite"><div className="sync-pig"><span>₫</span><i /></div><strong>Đang đồng bộ lượt…</strong></div>}
         {pigConfirmMemberId !== null && (() => {
@@ -550,7 +529,28 @@ export function Dashboard({
             </div>;
           })}
         </div>
-        <div className="lock-form"><button className="primary-button lock-button" type="button" disabled={syncingLosses} onClick={() => requirePin(() => lockToday())}>Chốt lượt thua hôm nay</button></div>
+        <div className="lock-form">
+        <button className={editing ? "edit-button active" : "edit-button"} type="button" disabled={syncingLosses} onClick={async () => {
+            if (editing && !hasAccess) {
+              requirePin(async () => {
+                if (pendingLossChanges.current.length) {
+                  if (lossSyncTimer.current) clearTimeout(lossSyncTimer.current);
+                  lossSyncTimer.current = null;
+                  if (!(await flushLossChanges())) return;
+                }
+                setEditing(false);
+              });
+              return;
+            }
+            if (pendingLossChanges.current.length) {
+              if (lossSyncTimer.current) clearTimeout(lossSyncTimer.current);
+              lossSyncTimer.current = null;
+              if (!(await flushLossChanges())) return;
+            }
+            setEditing(!editing);
+          }}>{editing ? "Xong sửa" : "Sửa"}</button>
+          <button className="primary-button lock-button" type="button" disabled={syncingLosses} onClick={() => requirePin(() => lockToday())}>Chốt lượt thua hôm nay</button>
+        </div>
       </section>
 
       <section className="dashboard-panel chart-panel">

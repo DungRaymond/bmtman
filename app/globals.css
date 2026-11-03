@@ -17,7 +17,6 @@ button { cursor: pointer; }
 .dashboard-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 18px; }
 .dashboard-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .dashboard-heading h1, .dashboard-heading h2 { margin: 2px 0 0; font-size: 22px; letter-spacing: -.02em; }
-.loss-heading { justify-content: flex-end; }
 .eyebrow { margin: 0; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
 .dashboard-heading form { display: flex; gap: 7px; }
 input { min-width: 0; border: 1px solid var(--line); background: #121922; color: var(--text); border-radius: 10px; padding: 10px 11px; }
@@ -83,8 +82,9 @@ input { min-width: 0; border: 1px solid var(--line); background: #121922; color:
 .pig-total { margin-left: auto; border: 1px solid #8a6a1f; background: #3a2d12e6; color: #ffd36b; }
 .locked-count b, .pig-total b { font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .paid-count { position: absolute; top: 9px; left: 8px; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lock-form { margin-top: 14px; }
-.lock-button { width: 100%; min-height: 50px; font-size: 15px; }
+.lock-form { margin-top: 14px; display: flex; gap: 10px; }
+.lock-form .edit-button { min-height: 50px; white-space: nowrap; }
+.lock-button { flex: 1; min-height: 50px; font-size: 15px; }
 .login-overlay { position: fixed; inset: 0; z-index: 4; display: grid; place-items: center; padding: 20px; background: #080c12cc; backdrop-filter: blur(5px); }
 .login-card { width: min(100%, 360px); display: grid; gap: 12px; padding: 24px; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); box-shadow: 0 24px 80px #0008; }
 .login-card h2 { margin: 0; }
