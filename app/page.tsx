@@ -1,6 +1,5 @@
 import { Dashboard } from "@/app/Dashboard";
 import { getMembers } from "@/lib/finance";
-import { hasDashboardAccess } from "@/lib/dashboardAuth";
 import { getSupabaseAdmin, hasServerSupabaseConfig } from "@/lib/supabaseServer";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +30,7 @@ export default async function Home({ searchParams }: Props) {
   const date = today();
   const month = validMonth(params.month);
   const view = params.view === "monthly" ? "monthly" : "total";
-  const [members, authorized] = await Promise.all([getMembers(), hasDashboardAccess()]);
+  const members = await getMembers();
   if (!hasServerSupabaseConfig) {
     return <main><div className="config-warning">Thiếu cấu hình SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY.</div></main>;
   }
@@ -65,6 +64,6 @@ export default async function Home({ searchParams }: Props) {
     losses={(lossResult.data || []) as LossRow[]}
     pigTotals={pigTotals}
     chart={{ total, monthly }}
-    authorized={authorized}
+    authorized={false}
   />;
 }

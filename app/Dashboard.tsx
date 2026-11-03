@@ -47,6 +47,26 @@ export function Dashboard({
   authorized: boolean;
 }) {
   const [editing, setEditing] = useState(false);
+  const [hasAccess, setHasAccess] = useState(authorized);
+  const [pinPrompt, setPinPrompt] = useState(false);
+  const [pinError, setPinError] = useState("");
+  const [pendingPinAction, setPendingPinAction] = useState<(() => void | Promise<void>) | null>(null);
+  function requirePin(action: () => void | Promise<void>) {
+    if (hasAccess) void action();
+    else { setPendingPinAction(() => action); setPinError(""); setPinPrompt(true); }
+  }
+  async function submitPin(formData: FormData) {
+    try {
+      await loginDashboardAction(formData);
+      setHasAccess(true);
+      setPinPrompt(false);
+      const action = pendingPinAction;
+      setPendingPinAction(null);
+      await action?.();
+    } catch (error) {
+      setPinError(error instanceof Error ? error.message : "Không xác thực được PIN.");
+    }
+  }
   const [visibleLosses, setVisibleLosses] = useState(losses);
   const [unpaidLosses, setUnpaidLosses] = useState<UnpaidLoss[]>([]);
   const [lossSyncError, setLossSyncError] = useState(false);
@@ -201,7 +221,6 @@ export function Dashboard({
     return sync;
   }
   function lockToday() {
-    if (!authorized) return;
     if (lossSyncTimer.current) {
       clearTimeout(lossSyncTimer.current);
       lossSyncTimer.current = null;
@@ -310,6 +329,7 @@ export function Dashboard({
     event.preventDefault();
     if (syncingLosses) return;
     const formData = new FormData(event.currentTarget);
+    if (!hasAccess) { requirePin(() => { pendingLossChanges.current.push(formData); void flushLossChanges(); }); return; }
     const memberId = Number(formData.get("member_id"));
     const delta = Number(formData.get("delta"));
     const current = lossState.current.find((loss) => loss.member_id === memberId);
@@ -428,7 +448,9 @@ export function Dashboard({
           setExpensePending(true);
           setExpenseError("");
           try {
-            await addExpenseAction(formData);
+            await new Promise<void>((resolve, reject) => requirePin(async () => {
+              try { await addExpenseAction(formData); resolve(); } catch (error) { reject(error); }
+            }));
             const response = await fetch(`/api/dashboard-totals?month=${selectedMonth}`, { cache: "no-store" });
             if (!response.ok) throw new Error("Không đồng bộ được tổng quỹ.");
             const fresh = await response.json() as ChartTotals;
@@ -457,6 +479,17 @@ export function Dashboard({
         <div className="dashboard-heading">
           <div><p className="eyebrow">{date}</p><h2>Lượt thua hôm nay</h2></div>
           <button className={editing ? "edit-button active" : "edit-button"} type="button" disabled={syncingLosses} onClick={async () => {
+            if (editing && !hasAccess) {
+              requirePin(async () => {
+                if (pendingLossChanges.current.length) {
+                  if (lossSyncTimer.current) clearTimeout(lossSyncTimer.current);
+                  lossSyncTimer.current = null;
+                  if (!(await flushLossChanges())) return;
+                }
+                setEditing(false);
+              });
+              return;
+            }
             if (pendingLossChanges.current.length) {
               if (lossSyncTimer.current) clearTimeout(lossSyncTimer.current);
               lossSyncTimer.current = null;
@@ -474,12 +507,15 @@ export function Dashboard({
             <p className="eyebrow">QUỸ NUÔI LỢN</p><h2 id="pig-confirm-title">Chốt lượt của {member.name}?</h2>
             <p>{pigConfirmCount} lượt × 10.000đ = {money(pigConfirmCount * 10000)}. Lượt của riêng {member.name} sẽ về 0.</p>
             {pigCloseError && <p role="alert" className="sync-error">{pigCloseError}</p>}
-            <button className="primary-button" type="button" disabled={syncingLosses} onClick={() => {
-              setSyncingLosses(true);
-              setPigCloseError("");
-              void closePig(member, pigConfirmCount).then((success) => {
+            <button className="primary-button" type="button" disabled={syncingLosses} onClick={async () => {
+              const run = async () => {
+                setSyncingLosses(true);
+                setPigCloseError("");
+                const success = await closePig(member, pigConfirmCount);
                 if (success) setPigConfirmMemberId(null);
-              });
+              };
+              if (!hasAccess) { requirePin(run); return; }
+              await run();
             }}>Xác nhận chốt</button>
             <button className="secondary-button" type="button" onClick={() => setPigConfirmMemberId(null)}>Hủy</button>
           </section></div>;
@@ -492,9 +528,12 @@ export function Dashboard({
             <p>{resetConfirmLocked} lượt đã chốt sẽ bị trừ khỏi tổng lượt thua, không thu tiền.</p>
             {resetError && <p role="alert" className="sync-error">{resetError}</p>}
             <button className="primary-button" type="button" disabled={syncingLosses} onClick={() => {
-              void resetLockedLosses(member, resetConfirmLocked).then((success) => {
+              const run = async () => {
+                const success = await resetLockedLosses(member, resetConfirmLocked);
                 if (success) setResetConfirmMemberId(null);
-              });
+              };
+              if (!hasAccess) { requirePin(run); return; }
+              void run();
             }}>Xóa lượt đã chốt</button>
             <button className="secondary-button" type="button" onClick={() => setResetConfirmMemberId(null)}>Hủy</button>
           </section></div>;
@@ -515,7 +554,7 @@ export function Dashboard({
             return <div className={`member-tile${editing ? " is-editing" : ""}`} key={member.member_id}>
               <form id={formId} onSubmit={handleLossChange}>
                 <input type="hidden" name="date" value={date} /><input type="hidden" name="member_id" value={member.member_id} /><input type="hidden" name="delta" value={editing ? -1 : 1} />
-                <button className={`member-tap${holdProgressMemberId === member.member_id ? " is-holding" : ""}${tapFeedbackMemberId === member.member_id ? " tap-feedback" : ""}`} type="submit" disabled={!authorized || syncingLosses || (editing && !canRemove && !canReset)}
+                <button className={`member-tap${holdProgressMemberId === member.member_id ? " is-holding" : ""}${tapFeedbackMemberId === member.member_id ? " tap-feedback" : ""}`} type="submit" disabled={syncingLosses || (editing && !canRemove && !canReset)}
                   onPointerDown={(event) => {
                     if (!editing && todayCount > 0) holdStart(member.member_id, todayCount, "pig");
                     else if (editing && canReset) holdStart(member.member_id, locked, "reset");
@@ -543,18 +582,17 @@ export function Dashboard({
             </div>;
           })}
         </div>
-        <div className="lock-form"><button className="primary-button lock-button" type="button" disabled={!authorized || syncingLosses} onClick={() => lockToday()}>Chốt lượt thua hôm nay</button></div>
+        <div className="lock-form"><button className="primary-button lock-button" type="button" disabled={syncingLosses} onClick={() => requirePin(() => lockToday())}>Chốt lượt thua hôm nay</button></div>
       </section>
 
-      {!authorized && <LoginPanel />}
+      {pinPrompt && <div className="login-overlay"><form className="login-card" action={submitPin}>
+        <p className="eyebrow">QUYỀN QUẢN LÝ</p><h2>Xác nhận PIN</h2><p>Nhập PIN để tiếp tục thao tác.</p>
+        {pinError && <p role="alert" className="sync-error">{pinError}</p>}
+        <input name="pin" type="password" autoComplete="current-password" placeholder="PIN" required autoFocus />
+        <button className="primary-button">Xác nhận</button>
+        <button className="secondary-button" type="button" onClick={() => { setPendingPinAction(null); setPinPrompt(false); }}>Hủy</button>
+      </form></div>}
     </main>
   );
 }
 
-function LoginPanel() {
-  return <div className="login-overlay"><form className="login-card" action={loginDashboardAction}>
-    <p className="eyebrow">QUYỀN QUẢN LÝ</p><h2>Mở quyền ghi</h2><p>Nhập PIN quản lý để ghi lượt, chốt ngày và cập nhật quỹ.</p>
-    <input name="pin" type="password" autoComplete="current-password" placeholder="PIN" required />
-    <button className="primary-button">Mở dashboard</button>
-  </form></div>;
-}
