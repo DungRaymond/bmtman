@@ -2,7 +2,8 @@
 
 :root { color-scheme: dark; --bg: #10151d; --panel: #1a222d; --line: #2b3745; --muted: #95a3b5; --text: #f3f6fa; --green: #38d39f; --red: #ff7580; --blue: #83a9ff; }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-tap-highlight-color: transparent; }
+html { min-height: 100%; overflow-y: auto; overscroll-behavior-y: auto; -webkit-overflow-scrolling: touch; }
+body { min-height: 100vh; margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-tap-highlight-color: transparent; }
 button, input { font: inherit; }
 button { cursor: pointer; }
 .app-shell-header { max-width: 760px; padding: 16px 18px 10px; margin: auto; }
@@ -60,7 +61,7 @@ input { min-width: 0; border: 1px solid var(--line); background: #121922; color:
 .member-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .member-tile { position: relative; min-width: 0; }
 .member-tile form:first-child { height: 100%; }
-.member-tap { position: relative; isolation: isolate; width: 100%; aspect-ratio: 1; min-width: 0; padding: 22px 7px 26px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; border: 1px solid #344354; border-radius: 17px; background: #222e3a; color: var(--text); }
+.member-tap { position: relative; isolation: isolate; width: 100%; aspect-ratio: 1; min-width: 0; padding: 22px 7px 26px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 6px; overflow: hidden; touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; border: 1px solid #344354; border-radius: 17px; background: #222e3a; color: var(--text); }
 .member-tap:active { transform: scale(.97); background: #2b3a49; }
 .member-tap.tap-feedback { animation: tap-feedback 220ms ease-out; }
 @keyframes tap-feedback { 45% { border-color: #68e7b8; box-shadow: 0 0 0 4px #38d39f55, 0 0 24px #38d39f66; } }
