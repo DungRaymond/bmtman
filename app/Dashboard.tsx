@@ -113,6 +113,8 @@ export function Dashboard({
   const [selectedMonth, setSelectedMonth] = useState(month);
   const [selectedView, setSelectedView] = useState(view);
   const [totals, setTotals] = useState<ChartTotals>(chart);
+  const [hiddenFunds, setHiddenFunds] = useState({ memberFund: false, pig: false });
+  const hiddenFundsCacheKey = "dashboard-hidden-funds";
   const [expenseError, setExpenseError] = useState("");
   const [expensePending, setExpensePending] = useState(false);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
@@ -180,6 +182,25 @@ export function Dashboard({
       }).catch(() => {});
     return () => { active = false; };
   }, [unpaidLossesCacheKey]);
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      try {
+        const cached = JSON.parse(localStorage.getItem(hiddenFundsCacheKey) || "null") as { memberFund?: unknown; pig?: unknown } | null;
+        if (active && cached && typeof cached.memberFund === "boolean" && typeof cached.pig === "boolean") {
+          setHiddenFunds({ memberFund: cached.memberFund, pig: cached.pig });
+        }
+      } catch {}
+    });
+    return () => { active = false; };
+  }, [hiddenFundsCacheKey]);
+  function toggleFund(key: "memberFund" | "pig") {
+    setHiddenFunds((current) => {
+      const next = { ...current, [key]: !current[key] };
+      try { localStorage.setItem(hiddenFundsCacheKey, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
   useEffect(() => {
     let active = true;
     Promise.resolve().then(() => {
@@ -383,10 +404,14 @@ export function Dashboard({
     setLossSyncError(false);
   }
   const shown = totals[selectedView];
-  const maxBar = Math.max(1, shown.memberFund + shown.pig, shown.expense);
-  const memberFundWidth = shown.memberFund / maxBar * 100;
-  const pigWidth = shown.pig / maxBar * 100;
+  const visibleMemberFund = hiddenFunds.memberFund ? 0 : shown.memberFund;
+  const visiblePig = hiddenFunds.pig ? 0 : shown.pig;
+  const allFundsHidden = hiddenFunds.memberFund && hiddenFunds.pig;
+  const maxBar = Math.max(1, visibleMemberFund + visiblePig, shown.expense);
+  const memberFundWidth = visibleMemberFund / maxBar * 100;
+  const pigWidth = visiblePig / maxBar * 100;
   const expenseWidth = shown.expense / maxBar * 100;
+  const chartAriaLabel = `${selectedView === "total" ? "Tổng đến hết" : "Tháng"} ${selectedMonth}: ${hiddenFunds.memberFund ? "quỹ thành viên đã ẩn" : `quỹ thành viên ${money(shown.memberFund)}`}, ${hiddenFunds.pig ? "quỹ nuôi lợn đã ẩn" : `quỹ nuôi lợn ${money(shown.pig)}`}, chi ${money(shown.expense)}`;
 
   function holdStart(memberId: number, count: number, mode: "pig" | "reset") {
     held.current.delete(memberId);
@@ -525,7 +550,6 @@ export function Dashboard({
                     }
                   }}>
                   <span className="loss-count">{count}</span>
-                  {paid ? <small className="paid-count">{`Đã thu ${paid}/${locked}`}</small> : null}
                   <strong>{member.name.replace(/\s+/, "\n")}</strong>
                   <div className="tile-badges">
                     {unpaidLocked > 0 && <span className="locked-count" aria-label={`${unpaidLocked} lượt chưa đút lợn`} title={`${unpaidLocked} lượt chưa đút lợn`}><b>{unpaidLocked}</b> chưa đút</span>}
@@ -569,14 +593,25 @@ export function Dashboard({
           <button type="button" className={selectedView === "total" ? "active" : ""} onClick={() => setSelectedView("total")}>Tổng đến tháng</button>
           <button type="button" className={selectedView === "monthly" ? "active" : ""} onClick={() => setSelectedView("monthly")}>Theo tháng</button>
         </nav>
-        <div className="bar-chart" role="img" aria-label={`${selectedView === "total" ? "Tổng đến hết" : "Tháng"} ${selectedMonth}: quỹ thành viên ${money(shown.memberFund)}, quỹ nuôi lợn ${money(shown.pig)}, chi ${money(shown.expense)}`}>
+        <div className="bar-chart" role="img" aria-label={chartAriaLabel}>
           <div className="fund-chart-row">
-            <div className="fund-chart-label"><span>Quỹ thành viên + nuôi lợn</span><strong>{money(shown.memberFund + shown.pig)}</strong></div>
+            <div className="fund-chart-label"><span>Quỹ thành viên + nuôi lợn</span><strong>{allFundsHidden ? "•••••" : money(visibleMemberFund + visiblePig)}</strong></div>
             <div className="horizontal-bar stacked-bar">
-              <i className="bar-member-fund" style={{ width: `${memberFundWidth}%` }} title={`Quỹ thành viên ${money(shown.memberFund)}`} />
-              <i className="bar-pig" style={{ width: `${pigWidth}%` }} title={`Quỹ nuôi lợn ${money(shown.pig)}`} />
+              {!hiddenFunds.memberFund && <i className="bar-member-fund" style={{ width: `${memberFundWidth}%` }} title={`Quỹ thành viên ${money(shown.memberFund)}`} />}
+              {!hiddenFunds.pig && <i className="bar-pig" style={{ width: `${pigWidth}%` }} title={`Quỹ nuôi lợn ${money(shown.pig)}`} />}
             </div>
-            <div className="chart-breakdown"><span><i className="legend-member-fund" />Quỹ thành viên {money(shown.memberFund)}</span><span><i className="legend-pig" />Nuôi lợn {money(shown.pig)}</span></div>
+            <div className="chart-breakdown">
+              <button type="button" className="fund-toggle" aria-pressed={!hiddenFunds.memberFund} title={hiddenFunds.memberFund ? "Hiện quỹ thành viên" : "Ẩn quỹ thành viên"} onClick={() => toggleFund("memberFund")}>
+                <i className="legend-member-fund" />Quỹ thành viên
+                <b>{hiddenFunds.memberFund ? "•••••" : money(shown.memberFund)}</b>
+                <small>{hiddenFunds.memberFund ? "Hiện" : "Ẩn"}</small>
+              </button>
+              <button type="button" className="fund-toggle" aria-pressed={!hiddenFunds.pig} title={hiddenFunds.pig ? "Hiện quỹ nuôi lợn" : "Ẩn quỹ nuôi lợn"} onClick={() => toggleFund("pig")}>
+                <i className="legend-pig" />Nuôi lợn
+                <b>{hiddenFunds.pig ? "•••••" : money(shown.pig)}</b>
+                <small>{hiddenFunds.pig ? "Hiện" : "Ẩn"}</small>
+              </button>
+            </div>
           </div>
           <div className="fund-chart-row">
             <div className="fund-chart-label"><span>Chi</span><strong>{money(shown.expense)}</strong></div>

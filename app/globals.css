@@ -37,8 +37,13 @@ input { min-width: 0; border: 1px solid var(--line); background: #121922; color:
 .bar-member-fund, .legend-member-fund { background: #38d39f; }
 .bar-pig, .legend-pig { background: #a978ff; }
 .bar-expense { background: var(--red); }
-.chart-breakdown { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); font-size: 11px; }
-.chart-breakdown span { display: inline-flex; align-items: center; gap: 6px; }
+.chart-breakdown { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 11px; }
+.chart-breakdown .fund-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 9px; background: #121922; color: var(--muted); font: inherit; font-size: 11px; }
+.chart-breakdown .fund-toggle[aria-pressed="false"] { border-style: dashed; }
+.chart-breakdown .fund-toggle b { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; }
+.chart-breakdown .fund-toggle[aria-pressed="false"] b { color: var(--muted); letter-spacing: .08em; }
+.chart-breakdown .fund-toggle small { color: var(--green); font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.chart-breakdown .fund-toggle[aria-pressed="false"] small { color: var(--blue); }
 .chart-breakdown i { width: 8px; height: 8px; display: inline-block; border-radius: 3px; }
 .chart-view-switch { display: flex; gap: 6px; padding-top: 12px; }
 .chart-view-switch button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 700; }
@@ -81,7 +86,6 @@ input { min-width: 0; border: 1px solid var(--line); background: #121922; color:
 .locked-count { border: 1px solid #7653b5; background: #302448e6; color: #d2baff; }
 .pig-total { margin-left: auto; border: 1px solid #8a6a1f; background: #3a2d12e6; color: #ffd36b; }
 .locked-count b, .pig-total b { font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.paid-count { position: absolute; top: 9px; left: 8px; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lock-form { margin-top: 14px; display: flex; gap: 10px; }
 .lock-form .edit-button { min-height: 50px; white-space: nowrap; }
 .lock-button { flex: 1; min-height: 50px; font-size: 15px; }

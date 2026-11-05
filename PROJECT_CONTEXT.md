@@ -40,11 +40,11 @@ Bốn API route đều `Cache-Control: no-store`, trả 503 nếu thiếu env, v
 - **Nhấn giữ ô (~1,1s, cổng 300ms) ở chế độ thường** = xác nhận đút lợn: ghi toàn bộ phần chưa đút (`loss_count − paid_count`) của **mọi ngày** vào `pig_ledger`, mỗi ngày một dòng theo `paid_date`, rồi xóa các dòng đó (`dashboard_close_pig_all`). Số trên hộp xác nhận lấy từ tổng chưa đút của thành viên, khớp với số lớn trên ô.
 - **Nhấn giữ ô ở chế độ "Sửa"** = hoàn tác lượt đã chốt (`dashboard_delete_locked_loss`), không thu tiền; chỉ dùng khi chưa ghi nhận đã thu.
 - Tiền lưu số nguyên VND. Đơn giá đút lợn hiện hardcode `10.000đ/lượt` (check `amount = loss_count * 10000` trong SQL và nhân 10000 trong `Dashboard.tsx`) — đổi đơn giá phải sửa cả hai nơi.
+- **Biểu đồ thu–chi**: mỗi quỹ (thành viên / nuôi lợn) có nút ẩn–hiện riêng; khi ẩn, số tiền hiển thị `•••••`, thanh tương ứng biến mất và tổng "Quỹ thành viên + nuôi lợn" chỉ cộng các quỹ đang hiện. Lựa chọn lưu ở `localStorage`.
 
 ### Badge trên ô thành viên
 
 - Góc phải trên (xanh dương): tổng lượt thua **chưa thu**, cộng dồn mọi ngày (`/api/dashboard-unpaid-losses`).
-- Góc trái trên: `Đã thu x/y` khi `paid_count > 0`.
 - Góc trái dưới (tím): `chưa đút` = `locked_count − paid_count` của dữ liệu treo.
 - Góc phải dưới (vàng): `đã đút` = tổng tiền trong `pig_ledger`, dạng gọn (`70k`, `1,2tr`).
 
@@ -56,6 +56,7 @@ Bốn API route đều `Cache-Control: no-store`, trả 503 nếu thiếu env, v
 - `dashboard-unpaid-losses`
 - `dashboard-pig-totals`
 - `dashboard-monthly-totals` (object theo tháng)
+- `dashboard-hidden-funds` (trạng thái ẩn/hiện quỹ thành viên và quỹ nuôi lợn trên biểu đồ)
 
 Thay đổi lượt được xếp hàng trong `lossQueue`, gộp và flush sau **2700ms** không thao tác; các thao tác chốt/hoàn tác/đút lợn flush trước khi gọi RPC. Trạng thái đồng bộ hiển thị bằng overlay "heo" (`.sync-overlay`).
 
