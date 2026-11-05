@@ -18,8 +18,9 @@ Cập nhật: 2026-11-04
 
 ## Trạng thái PIN
 
-- Dashboard xem được không cần PIN; mọi thao tác ghi đều yêu cầu PIN và được kiểm tra lại ở server bằng `assertDashboardAccess()` / `hasDashboardAccess()`.
-- Đã rà soát và sửa luồng PIN theo thao tác (ghi lượt, chốt lượt thua, xác nhận đút lợn, kết thúc Sửa, thêm khoản chi, hoàn tác lượt): sau khi nhập PIN hợp lệ, thao tác gốc tự chạy tiếp.
+- Dashboard xem được không cần PIN. Ghi/giảm lượt thua cũng không cần PIN ở cả UI và server (`changeLossAction`).
+- Các thao tác quản trị còn lại (chốt lượt thua, xác nhận đút lợn, kết thúc Sửa, thêm khoản chi, hoàn tác lượt) yêu cầu PIN và được kiểm tra lại ở server bằng `assertDashboardAccess()` / `hasDashboardAccess()`.
+- Đã rà soát và sửa luồng PIN theo thao tác: sau khi nhập PIN hợp lệ, thao tác gốc tự chạy tiếp.
 - `loginDashboardAction` và `addExpenseAction` trả `{ ok, error }` thay vì throw, vì Next production ẩn message lỗi throw từ Server Action.
 - Form thêm khoản chi dùng `onSubmit`: không mất dữ liệu nhập khi PIN sai/lỗi; hủy hộp PIN không làm kẹt trạng thái "Đang lưu…".
 - Khi thao tác lỗi, client gọi `checkDashboardAccessAction` để hỏi PIN lại nếu cookie đã hết hạn.
@@ -29,6 +30,7 @@ Cập nhật: 2026-11-04
 
 - Bảng chính: `members`, `daily_member_losses`, `pig_ledger`, `fund_contributions`, `dashboard_expenses`, `dashboard_monthly_totals`.
 - SQL migration tháng: `supabase-dashboard-monthly-totals.sql`. Người dùng xác nhận đã chạy SQL này trên Supabase.
+- Đút lợn thanh toán toàn bộ ngày còn nợ qua RPC `dashboard_close_pig_all` (`supabase-dashboard-close-pig-all.sql`); cần chạy migration này trên Supabase trước khi dùng bản mới.
 - Bản sửa biểu đồ đọc số liệu từ bảng nguồn thay vì phụ thuộc hoàn toàn vào cache tổng tháng.
 - `TODO.md`: tất cả task PIN đã tick hoàn thành.
 

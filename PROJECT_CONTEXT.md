@@ -17,7 +17,7 @@ Các trang `thu`, `chi`, `tổng hợp`, `sổ thu` đã bị gỡ khỏi giao d
 - `app/page.tsx` là Server Component (`force-dynamic`); toàn bộ tương tác nằm trong Client Component `app/Dashboard.tsx` và gọi Server Actions.
 - Không có test runner; kiểm tra bằng `yarn lint` và `yarn build`.
 - Đây là Next.js có breaking changes. Trước khi sửa code Next.js, đọc guide tương ứng trong `node_modules/next/dist/docs/` theo `AGENTS.md`.
-- Mutation phải gọi `assertDashboardAccess()` (trong `lib/dashboardAuth.ts`) trước khi đổi dữ liệu; sau mutation gọi `revalidatePath("/")`.
+- Mutation quản trị phải gọi `assertDashboardAccess()` (trong `lib/dashboardAuth.ts`) trước khi đổi dữ liệu; sau mutation gọi `revalidatePath("/")`. Ngoại lệ: `changeLossAction` (ghi/giảm lượt thua) không yêu cầu PIN; chỉ chốt lượt, đút lợn, hoàn tác và thêm chi mới cần PIN.
 - UI và tài liệu tiếng Việt UTF-8, tránh mojibake.
 
 ## Route và entry point
@@ -35,9 +35,9 @@ Bốn API route đều `Cache-Control: no-store`, trả 503 nếu thiếu env, v
 ## Luồng nghiệp vụ
 
 - Mỗi lượt thua = `+1 loss_count` cho `(loss_date, member_id)`. Ngày lấy theo `Asia/Ho_Chi_Minh`, format `YYYY-MM-DD`; tháng `YYYY-MM`.
-- **Chạm ô** = +1 lượt. Ở chế độ **"Sửa"**, chạm = −1 lượt và bị chặn nếu sẽ xuống dưới `locked_count`.
+- **Chạm ô** = +1 lượt, không cần PIN. Ở chế độ **"Sửa"**, chạm = −1 lượt và bị chặn nếu sẽ xuống dưới `locked_count`.
 - **Chốt lượt thua hôm nay** = `locked_count = loss_count` cho cả ngày (`dashboard_lock_losses`).
-- **Nhấn giữ ô (~1,1s, cổng 300ms) ở chế độ thường** = xác nhận đút lợn: ghi `loss_count × 10.000đ` vào `pig_ledger` và xóa dòng lượt thua (`dashboard_close_pig`); chặn nếu `paid_count > 0`.
+- **Nhấn giữ ô (~1,1s, cổng 300ms) ở chế độ thường** = xác nhận đút lợn: ghi toàn bộ phần chưa đút (`loss_count − paid_count`) của **mọi ngày** vào `pig_ledger`, mỗi ngày một dòng theo `paid_date`, rồi xóa các dòng đó (`dashboard_close_pig_all`). Số trên hộp xác nhận lấy từ tổng chưa đút của thành viên, khớp với số lớn trên ô.
 - **Nhấn giữ ô ở chế độ "Sửa"** = hoàn tác lượt đã chốt (`dashboard_delete_locked_loss`), không thu tiền; chỉ dùng khi chưa ghi nhận đã thu.
 - Tiền lưu số nguyên VND. Đơn giá đút lợn hiện hardcode `10.000đ/lượt` (check `amount = loss_count * 10000` trong SQL và nhân 10000 trong `Dashboard.tsx`) — đổi đơn giá phải sửa cả hai nơi.
 
@@ -75,20 +75,22 @@ Tất cả bảng dashboard đều bật RLS và `revoke` khỏi `anon`/`authent
 - `dashboard_change_loss(p_date, p_member_id, p_delta)` — `p_delta` chỉ nhận `±1`, chặn giảm dưới `locked_count`, trả `loss_count` mới.
 - `dashboard_lock_losses(p_date)` — chốt cả ngày.
 - `dashboard_delete_locked_loss(p_date, p_member_id)` — hoàn tác lượt đã chốt, báo lỗi nếu đã thu.
-- `dashboard_close_pig(p_date, p_member_id)` — đút lợn toàn bộ `loss_count`, trả số tiền.
+- `dashboard_close_pig(p_date, p_member_id)` — đút lợn một ngày; còn trong schema nhưng UI không dùng.
+- `dashboard_close_pig_all(p_member_id, p_date)` — đút toàn bộ phần chưa đút của thành viên cho các ngày `<= p_date`, trả tổng tiền.
 - `dashboard_record_pig_payment(p_date, p_member_id)` — thu phần `locked_count − paid_count`; **hiện UI chưa gọi tới**, giữ như bước trung gian của luồng thu tiền cũ.
 
 ## File quan trọng
 
 - `app/page.tsx` — đọc searchParams, query 3 nguồn, dựng props cho `Dashboard`.
 - `app/Dashboard.tsx` — toàn bộ tương tác: optimistic state, queue đồng bộ, long-press, dialog xác nhận, biểu đồ.
-- `app/actions.ts` — Server Actions (`loginDashboardAction`, `changeLossAction`, `lockLossesAction`, `deleteLockedLossAction`, `closePigAction`, `recordPigPaymentAction`, `addExpenseAction`).
+- `app/actions.ts` — Server Actions (`loginDashboardAction`, `changeLossAction`, `lockLossesAction`, `deleteLockedLossAction`, `closePigAllAction`, `recordPigPaymentAction`, `addExpenseAction`).
 - `app/api/dashboard-*/route.ts` — 4 route JSON cho client re-fetch.
 - `app/globals.css` — style toàn bộ ứng dụng.
 - `lib/dashboardAuth.ts` — PIN + cookie `bmt_dashboard_access` (HMAC-SHA256 theo `THU_ACCESS_PIN`, hiệu lực 12 giờ, `httpOnly`/`sameSite: strict`).
 - `lib/supabaseServer.ts` — admin client singleton.
 - `supabase-dashboard.sql` — schema + RPC nền cho dashboard.
 - `supabase-dashboard-monthly-totals.sql` — bảng cache tháng, index, trigger, backfill.
+- `supabase-dashboard-close-pig-all.sql` — RPC `dashboard_close_pig_all` (đút hết các ngày còn nợ).
 - `supabase-fund-contribution-types.sql` — cột `contribution_type` cho `fund_contributions` (đã được gộp nội dung vào `supabase-dashboard.sql`).
 
 ## Code kế thừa (không còn UI dùng tới)

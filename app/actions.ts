@@ -41,7 +41,6 @@ export async function checkDashboardAccessAction() {
 }
 
 export async function changeLossAction(formData: FormData) {
-  await assertDashboardAccess();
   const date = dateValue(value(formData, "date"));
   const memberId = integer(value(formData, "member_id"), "Thành viên");
   const delta = integer(value(formData, "delta"), "Thao tác", -1, 1);
@@ -74,9 +73,9 @@ export async function recordPigPaymentAction(formData: FormData) {
   revalidatePath("/");
 }
 
-export async function closePigAction(formData: FormData) {
+export async function closePigAllAction(formData: FormData) {
   await assertDashboardAccess();
-  const amount = await rpc<number>("dashboard_close_pig", {
+  const amount = await rpc<number>("dashboard_close_pig_all", {
     p_date: dateValue(value(formData, "date")),
     p_member_id: integer(value(formData, "member_id"), "Thành viên"),
   });

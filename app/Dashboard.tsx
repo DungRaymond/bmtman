@@ -5,7 +5,7 @@ import {
   addExpenseAction,
   changeLossAction,
   checkDashboardAccessAction,
-  closePigAction,
+  closePigAllAction,
   deleteLockedLossAction,
   loginDashboardAction,
   lockLossesAction,
@@ -203,6 +203,7 @@ export function Dashboard({
     const fresh = await response.json() as UnpaidLoss[];
     setUnpaidLosses(fresh);
     try { localStorage.setItem(unpaidLossesCacheKey, JSON.stringify(fresh)); } catch {}
+    return fresh;
   }
   const unpaidByMember = new Map(unpaidLosses.map((item) => [item.member_id, item]));
   async function refreshLosses() {
@@ -310,7 +311,7 @@ export function Dashboard({
     formData.set("date", date);
     formData.set("member_id", String(member.member_id));
     try {
-      const amount = Number(await closePigAction(formData)) || 0;
+      const amount = Number(await closePigAllAction(formData)) || 0;
       const nextPigTotals = { ...pigTotals, [member.member_id]: (pigTotals[member.member_id] || 0) + amount };
       setPigTotals(nextPigTotals);
       try { localStorage.setItem(pigTotalsCacheKey, JSON.stringify(nextPigTotals)); } catch {}
@@ -352,7 +353,6 @@ export function Dashboard({
     event.preventDefault();
     if (syncingLosses) return;
     const formData = new FormData(event.currentTarget);
-    if (!hasAccess) { requirePin(() => { pendingLossChanges.current.push(formData); void flushLossChanges(); }); return; }
     const memberId = Number(formData.get("member_id"));
     const delta = Number(formData.get("delta"));
     const current = lossState.current.find((loss) => loss.member_id === memberId);
@@ -406,10 +406,17 @@ export function Dashboard({
         }
         const sync = syncBeforePigConfirm();
         holdSyncs.current.set(memberId, sync);
-        void sync.then((success) => {
+        void sync.then(async (success) => {
           holdSyncs.current.delete(memberId);
           if (!success) return;
-          const latestCount = lossState.current.find((loss) => loss.member_id === memberId)?.loss_count || 0;
+          let latestCount = 0;
+          try {
+            const fresh = await refreshUnpaidLosses();
+            latestCount = fresh.find((item) => item.member_id === memberId)?.loss_count || 0;
+          } catch {
+            const current = unpaidLosses.find((item) => item.member_id === memberId);
+            latestCount = current?.loss_count || 0;
+          }
           if (!latestCount) return;
           setPigConfirmMemberId(memberId);
           setPigConfirmCount(latestCount);
@@ -452,7 +459,7 @@ export function Dashboard({
           if (!member || !pigConfirmCount) return null;
           return <div className="login-overlay"><section className="login-card" role="dialog" aria-modal="true" aria-labelledby="pig-confirm-title">
             <p className="eyebrow">QUỸ NUÔI LỢN</p><h2 id="pig-confirm-title">Chốt lượt của {member.name}?</h2>
-            <p>{pigConfirmCount} lượt × 10.000đ = {money(pigConfirmCount * 10000)}. Lượt của riêng {member.name} sẽ về 0.</p>
+            <p>{pigConfirmCount} lượt × 10.000đ = {money(pigConfirmCount * 10000)}. Toàn bộ lượt chưa đút của {member.name} sẽ về 0.</p>
             {pigCloseError && <p role="alert" className="sync-error">{pigCloseError}</p>}
             <button className="primary-button" type="button" disabled={syncingLosses} onClick={async () => {
               const run = async () => {
@@ -503,7 +510,7 @@ export function Dashboard({
                 <input type="hidden" name="date" value={date} /><input type="hidden" name="member_id" value={member.member_id} /><input type="hidden" name="delta" value={editing ? -1 : 1} />
                 <button className={`member-tap${holdProgressMemberId === member.member_id ? " is-holding" : ""}${tapFeedbackMemberId === member.member_id ? " tap-feedback" : ""}`} type="submit" disabled={syncingLosses || (editing && !canRemove && !canReset)}
                   onPointerDown={(event) => {
-                    if (!editing && todayCount > 0) holdStart(member.member_id, todayCount, "pig");
+                    if (!editing && count > 0) holdStart(member.member_id, count, "pig");
                     else if (editing && canReset) holdStart(member.member_id, locked, "reset");
                     else held.current.delete(member.member_id);
                     event.currentTarget.setPointerCapture(event.pointerId);
